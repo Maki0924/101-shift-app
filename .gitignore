@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App data
+*.db
+backup/
+credentials.json
+shift_app.lock
+.env
+
+docs/
+
+shift-app-492411-fa1f07fe3ba4.json
+
+# Tools
+.claude/
+.serena/
