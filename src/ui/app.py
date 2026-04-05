@@ -48,7 +48,7 @@ class App(tk.Tk):
 
         self._current_screen: ttk.Frame | None = None
 
-    def show_screen(self, screen_cls: type, **kwargs) -> ttk.Frame:
+    def show_screen(self, screen_cls: type[ttk.Frame], **kwargs) -> ttk.Frame:
         """指定した画面クラスのインスタンスを生成して表示する。
 
         既存の画面は破棄する。
@@ -56,6 +56,7 @@ class App(tk.Tk):
         """
         if self._current_screen is not None:
             self._current_screen.destroy()
+            self._current_screen = None  # 先にNoneにして状態不整合を防ぐ
 
         screen = screen_cls(self._container, app=self, **kwargs)
         screen.pack(fill="both", expand=True)
