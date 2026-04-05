@@ -12,12 +12,12 @@ from typing import Protocol
 from src.db.connection import get_connection, transaction
 from src.utils.logger import get_logger
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 # マイグレーションスクリプトのマッピング: {from_version: module_path}
-# v1 → v2 以降のマイグレーションはここに追加する
-# 例: 1: "src.db.migrations.migrate_v1_to_v2"
-_MIGRATION_SCRIPTS: dict[int, str] = {}
+_MIGRATION_SCRIPTS: dict[int, str] = {
+    1: "src.db.migrations.migrate_v1_to_v2",
+}
 
 
 class MigrationScript(Protocol):

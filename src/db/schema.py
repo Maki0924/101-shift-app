@@ -161,6 +161,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     weekend_day_min_staff INTEGER NOT NULL DEFAULT 5 CHECK (weekend_day_min_staff >= 0),
     weekend_night_min_staff INTEGER NOT NULL DEFAULT 3 CHECK (weekend_night_min_staff >= 0),
     print_font_size INTEGER NOT NULL DEFAULT 9 CHECK (print_font_size >= 1),
+    credentials_filename TEXT NOT NULL DEFAULT 'credentials.json',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
