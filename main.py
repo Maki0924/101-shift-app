@@ -9,10 +9,12 @@
 
 import sys
 
-from src.utils.logger import setup_logger
-from src.utils.lock import LockError, acquire_lock, release_lock
+from src.db.connection import close_connection, init_connection
+from src.db.init_db import init_db
+from src.db.migrations.migration_runner import run_migrations
 from src.utils.backup import backup_on_startup
-from src.db.connection import init_connection, close_connection
+from src.utils.lock import LockError, acquire_lock, release_lock
+from src.utils.logger import setup_logger
 
 
 def main() -> None:
@@ -33,9 +35,12 @@ def main() -> None:
         # DB接続
         init_connection()
 
+        # スキーマ初期化・マイグレーション
+        init_db()
+        run_migrations()
+
         logger.info("shift-app initialized successfully")
 
-        # TODO: コミット2でスキーマ初期化を追加
         # TODO: コミット12でTkinter起動を追加
 
     except Exception as e:
