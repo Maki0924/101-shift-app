@@ -89,6 +89,63 @@ def create(
     return get_by_id(new_id)
 
 
+def create_with_day_entries(
+    period_id: int,
+    staff_id: int | None,
+    raw_staff_name: str,
+    external_submission_key: str,
+    submitted_at: str,
+    note_text: str | None,
+    weekly_pref_min: int | None,
+    weekly_pref_max: int | None,
+    day_entries: list[dict],
+) -> dict:
+    """回答と日別エントリーを1トランザクションで作成し、作成したレコードを返す。
+
+    同期処理など create + upsert_day_entries を原子的に実行したい場合に使用する。
+    day_entries の各要素は {"work_date": str, "start_time": float|None, "end_time": float|None}
+
+    NOTE: submissions の INSERT 文は create() と重複している。
+    スキーマ変更時は create() も合わせて修正すること。
+    """
+    now = _now()
+    with transaction() as txn:
+        cursor = txn.execute(
+            """
+            INSERT INTO submissions (
+                period_id, staff_id, raw_staff_name, external_submission_key,
+                submitted_at, note_text, weekly_pref_min, weekly_pref_max,
+                apply_status, is_latest_for_staff, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
+            """,
+            (
+                period_id, staff_id, raw_staff_name, external_submission_key,
+                submitted_at, note_text, weekly_pref_min, weekly_pref_max,
+                now, now,
+            ),
+        )
+        new_id = cursor.lastrowid
+        for entry in day_entries:
+            txn.execute(
+                """
+                INSERT INTO submission_day_entries
+                    (submission_id, work_date, start_time, end_time, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(submission_id, work_date) DO UPDATE SET
+                    start_time = excluded.start_time,
+                    end_time   = excluded.end_time,
+                    updated_at = excluded.updated_at
+                """,
+                (new_id, entry["work_date"], entry.get("start_time"), entry.get("end_time"), now, now),
+            )
+
+    # update_is_latest_for_staff はトランザクション外で実行する（create() と同様）。
+    # day_entries 挿入後に別コネクション参照が発生しないため、整合性は保たれる。
+    if staff_id is not None:
+        update_is_latest_for_staff(period_id, staff_id)
+    return get_by_id(new_id)
+
+
 def update_apply_status(submission_id: int, status: str) -> dict | None:
     """apply_status を更新し、更新後のレコードを返す。"""
     now = _now()

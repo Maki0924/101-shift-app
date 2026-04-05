@@ -39,6 +39,7 @@ def update(
     weekend_day_min_staff: int,
     weekend_night_min_staff: int,
     print_font_size: int,
+    credentials_filename: str,
 ) -> dict | None:
     """app_settings（id=1）を更新し、更新後のレコードを返す。"""
     now = _now()
@@ -59,6 +60,7 @@ def update(
                 weekend_day_min_staff = ?,
                 weekend_night_min_staff = ?,
                 print_font_size = ?,
+                credentials_filename = ?,
                 updated_at = ?
             WHERE id = 1
             """,
@@ -70,6 +72,7 @@ def update(
                 weekday_day_min_staff, weekday_night_min_staff,
                 weekend_day_min_staff, weekend_night_min_staff,
                 print_font_size,
+                credentials_filename,
                 now,
             ),
         )

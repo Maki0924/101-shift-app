@@ -43,9 +43,10 @@ def _insert_default_settings() -> None:
                 weekday_day_min_staff, weekday_night_min_staff,
                 weekend_day_min_staff, weekend_night_min_staff,
                 print_font_size,
+                credentials_filename,
                 created_at, updated_at
             ) VALUES (
-                1, 1,
+                1, 2,
                 8, 17,
                 17, 22,
                 2,
@@ -53,6 +54,7 @@ def _insert_default_settings() -> None:
                 2, 2,
                 5, 3,
                 9,
+                'credentials.json',
                 datetime('now', 'localtime'), datetime('now', 'localtime')
             )
             """

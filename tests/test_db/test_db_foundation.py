@@ -85,7 +85,7 @@ class TestInitDb:
         init_db()
         row = get_connection().execute("SELECT * FROM app_settings WHERE id = 1").fetchone()
         assert row is not None
-        assert row["schema_version"] == 1
+        assert row["schema_version"] == 2
         assert row["day_shift_start"] == 8
         assert row["night_shift_end"] == 22
         assert row["print_font_size"] == 9

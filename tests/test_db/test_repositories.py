@@ -205,9 +205,10 @@ class TestSettingsRepo:
     def test_get_returns_defaults(self):
         s = settings_repo.get()
         assert s is not None
-        assert s["schema_version"] == 1
+        assert s["schema_version"] == 2
         assert s["day_shift_start"] == 8
         assert s["print_font_size"] == 9
+        assert s["credentials_filename"] == "credentials.json"
 
     def test_update(self):
         updated = settings_repo.update(
@@ -224,10 +225,12 @@ class TestSettingsRepo:
             weekend_day_min_staff=6,
             weekend_night_min_staff=4,
             print_font_size=10,
+            credentials_filename="my-creds.json",
         )
         assert updated["day_shift_start"] == 9
         assert updated["saturday_bonus"] == 200
         assert updated["print_font_size"] == 10
+        assert updated["credentials_filename"] == "my-creds.json"
 
     def test_update_persists(self):
         settings_repo.update(
@@ -238,6 +241,7 @@ class TestSettingsRepo:
             weekday_day_min_staff=2, weekday_night_min_staff=2,
             weekend_day_min_staff=5, weekend_night_min_staff=3,
             print_font_size=11,
+            credentials_filename="credentials.json",
         )
         assert settings_repo.get()["day_shift_start"] == 10
 
