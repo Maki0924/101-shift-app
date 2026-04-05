@@ -5,8 +5,8 @@
 """
 
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
 
 from src.utils.logger import get_logger
 from src.utils.paths import APP_DIR
