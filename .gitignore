@@ -23,6 +23,7 @@ Thumbs.db
 # App data
 *.db
 backup/
+logs/
 credentials.json
 shift_app.lock
 .env
