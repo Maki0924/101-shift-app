@@ -43,6 +43,11 @@ def _deadline_day_warning(deadline_str: str) -> bool:
         return False
 
 
+def _is_archived_period(period: dict | None) -> bool:
+    """period が archived ステータスなら True を返す（保存時の二重ガード用）。"""
+    return period is not None and period.get("status") == "archived"
+
+
 def _parse_date(s: str) -> datetime.date | None:
     """YYYY-MM-DD 文字列を date に変換する。不正なら None。"""
     try:
@@ -122,6 +127,11 @@ class PeriodCreateScreen(ttk.Frame):
         start_str = self._entries["start_date"].get().strip()
         end_str = self._entries["end_date"].get().strip()
         deadline_str = self._entries["submission_deadline"].get().strip()
+
+        # archived 期間の編集はUI・保存の両方で禁止する（データ整合性保護）
+        if _is_archived_period(self._period):
+            show_error(self, "アーカイブ済み期間は編集できません。\nアーカイブ解除後に編集してください。")
+            return
 
         # バリデーション
         if not name:

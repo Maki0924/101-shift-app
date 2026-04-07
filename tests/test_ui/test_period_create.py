@@ -5,6 +5,7 @@ import datetime
 from src.ui.screens.period_create_screen import (
     _deadline_day_warning,
     _default_dates,
+    _is_archived_period,
     _parse_date,
 )
 
@@ -67,3 +68,17 @@ class TestParseDate:
 
     def test_empty_returns_none(self):
         assert _parse_date("") is None
+
+
+class TestIsArchivedPeriod:
+    def test_archived_returns_true(self):
+        assert _is_archived_period({"status": "archived"}) is True
+
+    def test_collecting_returns_false(self):
+        assert _is_archived_period({"status": "collecting"}) is False
+
+    def test_editing_returns_false(self):
+        assert _is_archived_period({"status": "editing"}) is False
+
+    def test_none_returns_false(self):
+        assert _is_archived_period(None) is False
