@@ -26,7 +26,7 @@ from src.db.repositories import (
 from src.logic.bulk_apply import bulk_apply
 from src.logic.undo_redo import UndoEntry, UndoRedoStack
 from src.logic.wage_calc import calc_wage, is_calculable
-from src.logic.weekly_count import WeeklyJudgment, judge_total
+from src.logic.weekly_count import WeeklyJudgment, judge, judge_total
 from src.ui.app import STATUS_LABELS
 from src.ui.components.dialogs import show_error
 from src.ui.components.right_panel import RightPanel
@@ -638,9 +638,9 @@ class ShiftEditScreen(ttk.Frame):
                     get_logger().warning("累計人件費計算失敗（除外）: %s", e)
             cur += datetime.timedelta(days=1)
 
-        # 採用済み回答から週何回希望テキストと判定を取得
+        # 採用済み回答から週何回希望テキストと週別判定リストを取得
         weekly_pref_text = "—"
-        judgment = None
+        weekly_judgments: list = []
         applied_sub = next(
             (sub for sub in self._submissions if sub["staff_id"] == staff["id"] and sub["apply_status"] == "applied"),
             None,
@@ -658,7 +658,7 @@ class ShiftEditScreen(ttk.Frame):
 
             current_shifts = self._collect_staff_shifts(staff["id"], period_start, period_end)
             try:
-                judgment = judge_total(
+                weekly_judgments = judge(
                     period_start,
                     period_end,
                     pref_min,
@@ -669,12 +669,13 @@ class ShiftEditScreen(ttk.Frame):
                 )
             except Exception as e:
                 get_logger().warning("週判定計算失敗: %s", e)
+                weekly_judgments = []
 
         return {
             "day_wage": day_wage,
             "total_wage": total_wage,
             "weekly_pref_text": weekly_pref_text,
-            "weekly_judgment": judgment,
+            "weekly_judgments": weekly_judgments,
         }
 
     def _on_back(self) -> None:

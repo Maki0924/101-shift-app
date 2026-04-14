@@ -171,17 +171,50 @@ class RightPanel(ttk.Frame):
 
     def _build_info_tab(self) -> None:
         f = self._tab_info
-        info_vars = [
+
+        # 上部: 当日人件費 / 累計人件費 / 週何回希望
+        top_vars = [
             ("当日人件費", "_info_day_wage"),
             ("累計人件費", "_info_total_wage"),
             ("週何回希望", "_info_weekly_pref"),
-            ("週判定", "_info_weekly_judge"),
         ]
-        for row, (label, attr) in enumerate(info_vars):
-            ttk.Label(f, text=label + ":").grid(row=row, column=0, sticky="w", padx=8, pady=4)
+        for row, (label, attr) in enumerate(top_vars):
+            ttk.Label(f, text=label + ":").grid(row=row, column=0, sticky="w", padx=8, pady=3)
             var = ttk.Label(f, text="—")
-            var.grid(row=row, column=1, sticky="w", padx=4, pady=4)
+            var.grid(row=row, column=1, sticky="w", padx=4, pady=3)
             setattr(self, attr, var)
+
+        # 週判定リスト（全週分 Treeview）
+        ttk.Label(f, text="週判定:").grid(row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(6, 2))
+
+        tree_frame = ttk.Frame(f)
+        tree_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", padx=4, pady=(0, 4))
+        f.rowconfigure(4, weight=1)
+        f.columnconfigure(1, weight=1)
+
+        self._weekly_tree = ttk.Treeview(
+            tree_frame,
+            columns=("week", "count", "judge"),
+            show="headings",
+            height=5,
+        )
+        self._weekly_tree.heading("week", text="週")
+        self._weekly_tree.heading("count", text="回")
+        self._weekly_tree.heading("judge", text="判定")
+        self._weekly_tree.column("week", width=80, anchor="center")
+        self._weekly_tree.column("count", width=26, anchor="center")
+        self._weekly_tree.column("judge", width=44, anchor="center")
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self._weekly_tree.yview)
+        self._weekly_tree.configure(yscrollcommand=vsb.set)
+        self._weekly_tree.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        # 判定色タグ
+        self._weekly_tree.tag_configure("UNDER", foreground="#ef4444")
+        self._weekly_tree.tag_configure("OVER", foreground="#f97316")
+        self._weekly_tree.tag_configure("OK", foreground="#16a34a")
+        self._weekly_tree.tag_configure("NO_PREF", foreground="#6b7280")
 
     # ── 公開 API ─────────────────────────────────────────────────────────────
 
@@ -272,26 +305,36 @@ class RightPanel(ttk.Frame):
         self._memo_save_btn.configure(state="disabled" if is_archived else "normal")
 
     def _update_info_tab(self, day_wage_info: dict | None, edit_mode: bool) -> None:
+        # Treeview をクリア
+        for item in self._weekly_tree.get_children():
+            self._weekly_tree.delete(item)
+
         if day_wage_info is None or not edit_mode:
-            for attr in ("_info_day_wage", "_info_total_wage", "_info_weekly_pref", "_info_weekly_judge"):
-                getattr(self, attr).configure(text="—", foreground="black")
+            for attr in ("_info_day_wage", "_info_total_wage", "_info_weekly_pref"):
+                getattr(self, attr).configure(text="—")
             return
 
         day_w = day_wage_info.get("day_wage", 0)
         total_w = day_wage_info.get("total_wage", 0)
         pref_text = day_wage_info.get("weekly_pref_text", "—")
-        judgment = day_wage_info.get("weekly_judgment")  # WeeklyJudgment or None
+        weekly_judgments = day_wage_info.get("weekly_judgments") or []
 
         self._info_day_wage.configure(text=f"¥{day_w:,}" if day_w is not None else "—")
         self._info_total_wage.configure(text=f"¥{total_w:,}" if total_w is not None else "—")
         self._info_weekly_pref.configure(text=pref_text)
 
-        if judgment is not None:
-            j_name = judgment.name  # WeeklyJudgment.UNDER -> "UNDER"
-            label, color = _JUDGMENT_LABELS.get(j_name, ("—", "black"))
-            self._info_weekly_judge.configure(text=label, foreground=color)
-        else:
-            self._info_weekly_judge.configure(text="—", foreground="black")
+        # 週判定を全週分 Treeview に表示
+        for week_range, confirmed, judgment in weekly_judgments:
+            w_start, w_end = week_range
+            week_label = f"{w_start.month}/{w_start.day}〜{w_end.month}/{w_end.day}"
+            j_name = judgment.name
+            j_text, _ = _JUDGMENT_LABELS.get(j_name, ("—", "black"))
+            self._weekly_tree.insert(
+                "",
+                "end",
+                values=(week_label, confirmed, j_text),
+                tags=(j_name,),
+            )
 
     # ── ボタンハンドラ ──────────────────────────────────────────────────────
 
