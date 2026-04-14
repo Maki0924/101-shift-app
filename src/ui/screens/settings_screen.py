@@ -3,6 +3,7 @@
 app_settings 全項目編集フォームと custom_day_rules（グローバル）CRUD を提供する。
 """
 
+import math
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
@@ -13,9 +14,11 @@ from src.utils.logger import get_logger
 
 
 def _parse_float(s: str, min_val: float | None = None) -> float | None:
-    """文字列を float に変換する。不正または min_val 未満なら None。"""
+    """文字列を有限 float に変換する。不正・非有限・min_val 未満なら None。"""
     try:
         v = float(s.strip())
+        if not math.isfinite(v):
+            return None
         if min_val is not None and v < min_val:
             return None
         return v
@@ -291,7 +294,22 @@ class SettingsScreen(ttk.Frame):
         self._custom_del_btn.configure(state=state)
 
     def _on_custom_add(self) -> None:
-        _CustomDayDialog(self, on_save=self._save_custom_rule)
+        def on_save_new(
+            rule_date: str,
+            is_custom_holiday: bool,
+            exclude_auto_holiday: bool,
+            wage_bonus: float | None,
+            note_text: str | None,
+        ) -> bool:
+            if custom_day_repo.get_one(0, rule_date) is not None:
+                show_error(
+                    self,
+                    f"{rule_date} はすでに登録されています。\n編集する場合は「編集」ボタンを使ってください。",
+                )
+                return False
+            return self._save_custom_rule(rule_date, is_custom_holiday, exclude_auto_holiday, wage_bonus, note_text)
+
+        _CustomDayDialog(self, on_save=on_save_new)
 
     def _on_custom_edit(self) -> None:
         sel = self._custom_tree.selection()

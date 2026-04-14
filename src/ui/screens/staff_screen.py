@@ -1,5 +1,6 @@
 """スタッフマスター管理画面（コミット15）"""
 
+import math
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
@@ -256,7 +257,7 @@ class _StaffDialog(tk.Toplevel):
 
         try:
             hourly_wage = float(self._wage_var.get().strip())
-            if hourly_wage < 0:
+            if not math.isfinite(hourly_wage) or hourly_wage < 0:
                 raise ValueError
         except ValueError:
             show_error(self, "時給は0以上の数値を入力してください。")
