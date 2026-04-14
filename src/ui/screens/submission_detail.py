@@ -6,7 +6,7 @@ from tkinter import ttk
 from src.db.repositories import staff_repo, submission_repo
 from src.logic.apply_submission import ApplyError, apply
 from src.ui.components.dialogs import ask_confirm, show_error
-from src.ui.screens.submission_list_screen import _STATUS_LABELS
+from src.ui.screens.submission_list_screen import SUBMISSION_STATUS_LABELS
 from src.utils.logger import get_logger
 
 
@@ -116,7 +116,7 @@ class SubmissionDetailScreen(ttk.Frame):
             weekly = f"{w_min}〜{w_max}回" if w_max is not None else f"{w_min}回以上"
 
         latest = "★ 最新" if sub["is_latest_for_staff"] else ""
-        status = _STATUS_LABELS.get(sub["apply_status"], sub["apply_status"])
+        status = SUBMISSION_STATUS_LABELS.get(sub["apply_status"], sub["apply_status"])
 
         lines = [
             f"氏名（フォーム）: {sub['raw_staff_name']}　紐付きスタッフ: {staff_name}  {latest}",

@@ -11,7 +11,7 @@ from src.ui.app import STATUS_LABELS
 from src.ui.components.dialogs import show_error
 from src.utils.logger import get_logger
 
-_STATUS_LABELS = {
+SUBMISSION_STATUS_LABELS = {
     "pending": "未処理",
     "applied": "採用済",
     "on_hold": "保留",
@@ -54,7 +54,7 @@ class SubmissionListScreen(ttk.Frame):
         status_cb = ttk.Combobox(
             filter_frame,
             textvariable=self._status_var,
-            values=[_ALL_STATUSES] + list(_STATUS_LABELS.values()),
+            values=[_ALL_STATUSES] + list(SUBMISSION_STATUS_LABELS.values()),
             state="readonly",
             width=10,
         )
@@ -140,7 +140,7 @@ class SubmissionListScreen(ttk.Frame):
         staff_filter = self._staff_var.get()
 
         # ステータスラベル→キー逆引き
-        label_to_key = {v: k for k, v in _STATUS_LABELS.items()}
+        label_to_key = {v: k for k, v in SUBMISSION_STATUS_LABELS.items()}
 
         filtered = self._all_submissions
         if status_filter != _ALL_STATUSES:
@@ -167,7 +167,7 @@ class SubmissionListScreen(ttk.Frame):
                     sub["submitted_at"],
                     sub["raw_staff_name"],
                     staff_name,
-                    _STATUS_LABELS.get(sub["apply_status"], sub["apply_status"]),
+                    SUBMISSION_STATUS_LABELS.get(sub["apply_status"], sub["apply_status"]),
                     "★" if sub["is_latest_for_staff"] else "",
                     "○" if linked else "✗",
                 ),
