@@ -7,14 +7,9 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.db.repositories import period_repo
+from src.ui.app import STATUS_LABELS
 from src.ui.components.dialogs import show_error
 from src.utils.logger import get_logger
-
-_STATUS_LABELS = {
-    "collecting": "募集中",
-    "editing": "編集中",
-    "archived": "アーカイブ",
-}
 
 
 class StartScreen(ttk.Frame):
@@ -34,14 +29,14 @@ class StartScreen(ttk.Frame):
 
         cols = ("name", "range", "status", "form")
         self._tree = ttk.Treeview(frame, columns=cols, show="headings", selectmode="browse")
-        self._tree.heading("name",   text="期間名")
-        self._tree.heading("range",  text="対象期間")
+        self._tree.heading("name", text="期間名")
+        self._tree.heading("range", text="対象期間")
         self._tree.heading("status", text="ステータス")
-        self._tree.heading("form",   text="フォーム")
-        self._tree.column("name",   width=180)
-        self._tree.column("range",  width=180)
-        self._tree.column("status", width=80,  anchor="center")
-        self._tree.column("form",   width=60,  anchor="center")
+        self._tree.heading("form", text="フォーム")
+        self._tree.column("name", width=180)
+        self._tree.column("range", width=180)
+        self._tree.column("status", width=80, anchor="center")
+        self._tree.column("form", width=60, anchor="center")
 
         vsb = ttk.Scrollbar(frame, orient="vertical", command=self._tree.yview)
         self._tree.configure(yscrollcommand=vsb.set)
@@ -78,10 +73,9 @@ class StartScreen(ttk.Frame):
             return
         for p in periods:
             date_range = f"{p['start_date']} 〜 {p['end_date']}"
-            status = _STATUS_LABELS.get(p["status"], p["status"])
+            status = STATUS_LABELS.get(p["status"], p["status"])
             form_mark = "有" if p.get("form_url") else "無"
-            self._tree.insert("", "end", iid=str(p["id"]),
-                              values=(p["name"], date_range, status, form_mark))
+            self._tree.insert("", "end", iid=str(p["id"]), values=(p["name"], date_range, status, form_mark))
 
         self._open_btn.configure(state="disabled")
 
@@ -95,10 +89,12 @@ class StartScreen(ttk.Frame):
             return
         period_id = int(sel[0])
         from src.ui.screens.period_dashboard import PeriodDashboardScreen
+
         self.app.show_screen(PeriodDashboardScreen, period_id=period_id)
 
     def _on_new(self) -> None:
         from src.ui.screens.period_create_screen import PeriodCreateScreen
+
         self.app.show_screen(PeriodCreateScreen)
 
     def _on_settings(self) -> None:

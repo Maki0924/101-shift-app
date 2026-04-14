@@ -9,6 +9,16 @@ from tkinter import ttk
 from src.ui.components.status_bar import StatusBar
 from src.utils.logger import get_logger
 
+# ステータス表示ラベル（全画面共通）
+STATUS_LABELS: dict[str, str] = {
+    "collecting": "募集中",
+    "editing": "編集中",
+    "archived": "アーカイブ",
+}
+
+# UIキューポーリング間隔 (ms)
+_UI_QUEUE_POLL_MS = 100
+
 
 @dataclass(frozen=True)
 class AppWarning:
@@ -54,7 +64,7 @@ class App(tk.Tk):
 
         # スレッドセーフUI更新用キュー（ワーカースレッドから直接 after() を呼ばないこと）
         self._ui_queue: queue.SimpleQueue[Callable[[], None]] = queue.SimpleQueue()
-        self.after(100, self._poll_ui_queue)
+        self.after(_UI_QUEUE_POLL_MS, self._poll_ui_queue)
 
     def _poll_ui_queue(self) -> None:
         """ワーカースレッドからのUI更新要求をメインスレッドで処理する。"""
@@ -67,7 +77,7 @@ class App(tk.Tk):
                 fn()
             except Exception as e:
                 get_logger().error("post_to_ui のコールバックで例外: %s", e, exc_info=True)
-        self.after(100, self._poll_ui_queue)
+        self.after(_UI_QUEUE_POLL_MS, self._poll_ui_queue)
 
     def post_to_ui(self, fn: Callable[[], None]) -> None:
         """ワーカースレッドからスレッドセーフにUI更新をスケジュールする。

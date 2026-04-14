@@ -8,14 +8,9 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.db.repositories import period_repo, staff_repo, submission_repo
+from src.ui.app import STATUS_LABELS
 from src.ui.components.dialogs import ask_confirm, show_error
 from src.utils.logger import get_logger
-
-_STATUS_LABELS = {
-    "collecting": "募集中",
-    "editing": "編集中",
-    "archived": "アーカイブ",
-}
 
 
 class PeriodDashboardScreen(ttk.Frame):
@@ -119,7 +114,7 @@ class PeriodDashboardScreen(ttk.Frame):
             return
 
         self._period = period
-        status_label = _STATUS_LABELS.get(period["status"], period["status"])
+        status_label = STATUS_LABELS.get(period["status"], period["status"])
         self._title_label.configure(text=f"{period['name']}  [{status_label}]")
         self._info_label.configure(
             text=f"対象期間: {period['start_date']} 〜 {period['end_date']}　提出期限: {period['submission_deadline']}"
