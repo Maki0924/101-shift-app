@@ -1,7 +1,14 @@
-"""シフト編集画面（コミット19〜23）"""
+"""シフト編集画面（コミット19〜23）
+
+コミット23追加:
+- 情報タブ: 当日/累計人件費・週何回希望・週判定をセル選択時にリアルタイム計算
+- 週回数判定ボタン: 全スタッフのスナップショット判定でグリッド名セルに色付け（再押下で解除）
+- 画面遷移時に判定色・ボタン状態をリセット
+"""
 
 from __future__ import annotations
 
+import datetime
 import tkinter as tk
 from tkinter import ttk
 
@@ -18,6 +25,8 @@ from src.db.repositories import (
 )
 from src.logic.bulk_apply import bulk_apply
 from src.logic.undo_redo import UndoEntry, UndoRedoStack
+from src.logic.wage_calc import calc_wage, is_calculable
+from src.logic.weekly_count import WeeklyJudgment, judge_total
 from src.ui.app import STATUS_LABELS
 from src.ui.components.dialogs import show_error
 from src.ui.components.right_panel import RightPanel
@@ -38,6 +47,9 @@ class ShiftEditScreen(ttk.Frame):
         self._rules: list[dict] = []
         self._undo_stack = UndoRedoStack()
         self._weekly_judge_active = False  # 判定色表示中かどうか
+        self._submissions: list[dict] = []
+        self._prev_period_end: datetime.date | None = None
+        self._prev_edited_by_staff: dict[int, list[dict]] = {}
         self._build()
         self._load()
 
@@ -123,8 +135,28 @@ class ShiftEditScreen(ttk.Frame):
             wish_shifts = wish_shift_repo.get_by_period(self._period_id)
             cell_marks = mark_repo.get_by_period(self._period_id)
             submissions = submission_repo.get_by_period(self._period_id)
+            self._submissions = submissions
             self._settings = settings_repo.get()
             self._rules = custom_day_repo.get_by_period(0) + custom_day_repo.get_by_period(self._period_id)
+
+            # 前期間の編集シフトを読み込む（週回数判定・情報タブ用）
+            all_periods = period_repo.get_all()
+            prev = None
+            for p in all_periods:
+                if p["id"] == self._period_id:
+                    continue
+                if p["end_date"] < period["start_date"]:
+                    if prev is None or p["end_date"] > prev["end_date"]:
+                        prev = p
+            if prev is not None:
+                self._prev_period_end = datetime.date.fromisoformat(prev["end_date"])
+                prev_shifts = edited_shift_repo.get_by_period(prev["id"])
+                self._prev_edited_by_staff = {}
+                for sh in prev_shifts:
+                    self._prev_edited_by_staff.setdefault(sh["staff_id"], []).append(sh)
+            else:
+                self._prev_period_end = None
+                self._prev_edited_by_staff = {}
         except Exception as e:
             get_logger().error("シフト編集データ読み込み失敗: %s", e, exc_info=True)
             show_error(self, "データの読み込みに失敗しました。")
@@ -180,6 +212,10 @@ class ShiftEditScreen(ttk.Frame):
             get_logger().error("メモ/マーク読み込み失敗: %s", e, exc_info=True)
             memo, mark_rec = None, None
 
+        day_wage_info = None
+        if self._edit_mode and self._settings and self._period:
+            day_wage_info = self._compute_info_tab(staff, work_date, shift)
+
         self._right_panel.show_cell(
             staff=staff,
             work_date=work_date,
@@ -188,6 +224,7 @@ class ShiftEditScreen(ttk.Frame):
             memo=memo,
             mark=mark_rec,
             edit_mode=self._edit_mode,
+            day_wage_info=day_wage_info,
         )
         self._right_panel.grid(row=0, column=1, sticky="ns", padx=(4, 0))
 
@@ -470,13 +507,172 @@ class ShiftEditScreen(ttk.Frame):
             self._on_cell_select(*self._grid.selected_cell)
 
     def _on_judge_weekly(self) -> None:
-        # コミット23で実装
-        pass
+        """週回数判定ボタン：押下で色付け、再押下で解除。"""
+        if self._weekly_judge_active:
+            self._weekly_judge_active = False
+            self._judge_btn.configure(text="週回数判定")
+            if self._grid:
+                self._grid.set_weekly_colors(None)
+            return
+
+        if self._period is None or self._grid is None:
+            return
+
+        try:
+            period_start = datetime.date.fromisoformat(self._period["start_date"])
+            period_end = datetime.date.fromisoformat(self._period["end_date"])
+
+            # 採用済み回答マップ {staff_id: submission}
+            applied_map: dict[int, dict] = {}
+            for sub in self._submissions:
+                if sub["apply_status"] == "applied" and sub["staff_id"] is not None:
+                    applied_map[sub["staff_id"]] = sub
+
+            colors: dict[int, str] = {}
+            for st in self._staff_list:
+                sid = st["id"]
+                sub = applied_map.get(sid)
+                if sub is None:
+                    continue  # NO_PREF → 色なし
+
+                pref_min = sub.get("weekly_pref_min")
+                pref_max = sub.get("weekly_pref_max")
+
+                # 現期間のシフトをグリッドキャッシュから収集
+                current_shifts = self._collect_staff_shifts(sid, period_start, period_end)
+
+                result = judge_total(
+                    period_start,
+                    period_end,
+                    pref_min,
+                    pref_max,
+                    current_shifts,
+                    self._prev_edited_by_staff.get(sid),
+                    self._prev_period_end,
+                )
+
+                if result == WeeklyJudgment.UNDER:
+                    colors[sid] = "red"
+                elif result == WeeklyJudgment.OVER:
+                    colors[sid] = "orange"
+                elif result == WeeklyJudgment.OK:
+                    colors[sid] = "green"
+                # NO_PREF → 色なし
+
+            self._grid.set_weekly_colors(colors)
+            self._weekly_judge_active = True
+            self._judge_btn.configure(text="判定解除")
+
+        except Exception as e:
+            get_logger().error("週回数判定失敗: %s", e, exc_info=True)
+            show_error(self, "週回数判定に失敗しました。")
+
+    def _collect_staff_shifts(
+        self,
+        staff_id: int,
+        period_start: datetime.date,
+        period_end: datetime.date,
+    ) -> list[dict]:
+        """グリッドキャッシュからスタッフの編集シフトリストを収集する。"""
+        shifts = []
+        cur = period_start
+        while cur <= period_end:
+            sh = self._grid.get_shift(staff_id, cur.isoformat()) if self._grid else None
+            if sh is not None:
+                shifts.append(sh)
+            cur += datetime.timedelta(days=1)
+        return shifts
+
+    def _compute_info_tab(self, staff: dict, work_date: str, shift: dict | None) -> dict:
+        """情報タブ用データ（当日/累計人件費・週何回希望・週判定）を計算する。"""
+        s = self._settings
+        date = datetime.date.fromisoformat(work_date)
+        period_start = datetime.date.fromisoformat(self._period["start_date"])
+        period_end = datetime.date.fromisoformat(self._period["end_date"])
+
+        # 当日人件費
+        day_wage = 0
+        if shift and is_calculable(shift.get("start_time"), shift.get("end_time")):
+            try:
+                day_wage = calc_wage(
+                    shift["start_time"],
+                    shift["end_time"],
+                    staff["hourly_wage"],
+                    date,
+                    s["saturday_bonus"],
+                    s["sunday_bonus"],
+                    s["holiday_bonus"],
+                    self._rules,
+                )
+            except Exception as e:
+                get_logger().warning("当日人件費計算失敗（除外）: %s", e)
+
+        # 累計人件費（グリッドキャッシュから全日分を合計）
+        total_wage = 0
+        cur = period_start
+        while cur <= period_end:
+            sh = self._grid.get_shift(staff["id"], cur.isoformat()) if self._grid else None
+            if sh and is_calculable(sh.get("start_time"), sh.get("end_time")):
+                try:
+                    total_wage += calc_wage(
+                        sh["start_time"],
+                        sh["end_time"],
+                        staff["hourly_wage"],
+                        cur,
+                        s["saturday_bonus"],
+                        s["sunday_bonus"],
+                        s["holiday_bonus"],
+                        self._rules,
+                    )
+                except Exception as e:
+                    get_logger().warning("累計人件費計算失敗（除外）: %s", e)
+            cur += datetime.timedelta(days=1)
+
+        # 採用済み回答から週何回希望テキストと判定を取得
+        weekly_pref_text = "—"
+        judgment = None
+        applied_sub = next(
+            (sub for sub in self._submissions if sub["staff_id"] == staff["id"] and sub["apply_status"] == "applied"),
+            None,
+        )
+        if applied_sub:
+            pref_min = applied_sub.get("weekly_pref_min")
+            pref_max = applied_sub.get("weekly_pref_max")
+
+            if pref_min is not None and pref_max is not None:
+                weekly_pref_text = f"{pref_min}回" if pref_min == pref_max else f"{pref_min}〜{pref_max}回"
+            elif pref_min is not None:
+                weekly_pref_text = f"{pref_min}回以上"
+            elif pref_max is not None:
+                weekly_pref_text = f"{pref_max}回以下"
+
+            current_shifts = self._collect_staff_shifts(staff["id"], period_start, period_end)
+            try:
+                judgment = judge_total(
+                    period_start,
+                    period_end,
+                    pref_min,
+                    pref_max,
+                    current_shifts,
+                    self._prev_edited_by_staff.get(staff["id"]),
+                    self._prev_period_end,
+                )
+            except Exception as e:
+                get_logger().warning("週判定計算失敗: %s", e)
+
+        return {
+            "day_wage": day_wage,
+            "total_wage": total_wage,
+            "weekly_pref_text": weekly_pref_text,
+            "weekly_judgment": judgment,
+        }
 
     def _on_back(self) -> None:
-        # 画面遷移時に判定色・キーバインドをリセット
+        # 画面遷移時に判定色・ボタン状態・キーバインドをリセット
         self.unbind_all("<Control-z>")
         self.unbind_all("<Control-y>")
+        self._weekly_judge_active = False
+        self._judge_btn.configure(text="週回数判定")
         if self._grid:
             self._grid.set_weekly_colors(None)
         from src.ui.screens.period_dashboard import PeriodDashboardScreen
