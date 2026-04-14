@@ -26,10 +26,12 @@ class AppWarning:
 
     period_id: 対象期間ID（アプリ全体の警告は None）
     message: 警告メッセージ
+    kind: 警告種別（"parse_error" | "general"）。デフォルトは "general"
     """
 
     period_id: int | None
     message: str
+    kind: str = "general"
 
 
 class App(tk.Tk):

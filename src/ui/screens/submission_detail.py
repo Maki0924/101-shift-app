@@ -164,8 +164,8 @@ class SubmissionDetailScreen(ttk.Frame):
         # 採用取り消しは別の回答を採用する（apply()の旧採用解除フロー）で行う
         self._hold_btn.configure(state="normal" if status not in ("on_hold", "applied") else "disabled")
         self._reject_btn.configure(state="normal" if status not in ("rejected", "applied") else "disabled")
-        # 既に紐付け済みでも変更可能（再紐付け）
-        self._link_btn.configure(state="normal")
+        # applied は wish_shifts 整合性のため再紐付け禁止。手動紐付けは未解決回答向け
+        self._link_btn.configure(state="normal" if status != "applied" else "disabled")
 
     # ── 採用/保留/却下 ───────────────────────────────────────────────────────
 

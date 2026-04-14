@@ -72,12 +72,12 @@ class TestAppliedStatusGuard:
 
         assert screen._apply_btn.state == "disabled"
 
-    def test_link_enabled_when_applied(self):
-        """adopted でもスタッフ紐付け変更は可能。"""
+    def test_link_disabled_when_applied(self):
+        """applied は wish_shifts 整合性を保てないため再紐付けを禁止。"""
         screen = _make_screen(is_archived=False)
         screen._update_buttons(_sub("applied", staff_id=1))
 
-        assert screen._link_btn.state == "normal"
+        assert screen._link_btn.state == "disabled"
 
 
 class TestNormalStatusButtons:

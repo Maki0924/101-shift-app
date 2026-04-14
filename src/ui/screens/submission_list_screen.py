@@ -177,11 +177,15 @@ class SubmissionListScreen(ttk.Frame):
     def _update_warnings(self) -> None:
         unlinked = sum(1 for s in self._all_submissions if s["staff_id"] is None)
         period_warnings = [w for w in self.app.warnings if w.period_id == self._period_id]
+        parse_errors = [w for w in period_warnings if w.kind == "parse_error"]
+        other_warnings = [w for w in period_warnings if w.kind != "parse_error"]
         parts = []
         if unlinked:
             parts.append(f"未紐付け回答: {unlinked}件")
-        if period_warnings:
-            parts.append(f"警告: {len(period_warnings)}件")
+        if parse_errors:
+            parts.append(f"パース不能: {len(parse_errors)}件")
+        if other_warnings:
+            parts.append(f"警告: {len(other_warnings)}件")
         self._warn_label.configure(text="  |  ".join(parts) if parts else "")
 
     # ── イベント ───────────────────────────────────────────────────────────────
