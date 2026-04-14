@@ -38,11 +38,8 @@ class SubmissionListScreen(ttk.Frame):
         self._title_label = ttk.Label(top, text="回答受信一覧", font=("", 15))
         self._title_label.pack(side="left")
         ttk.Button(top, text="戻る", command=self._on_back, width=10).pack(side="right")
-        ttk.Button(top, text="詳細を開く", command=self._on_open, width=12, state="disabled").pack(
-            side="right", padx=(0, 8)
-        )
-        # ボタン参照を保持
-        self._open_btn: ttk.Button = top.winfo_children()[-1]  # type: ignore[assignment]
+        self._open_btn = ttk.Button(top, text="詳細を開く", command=self._on_open, width=12, state="disabled")
+        self._open_btn.pack(side="right", padx=(0, 8))
 
         # ── 警告エリア ──
         self._warn_label = ttk.Label(self, text="", foreground="orange")

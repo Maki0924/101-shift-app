@@ -23,6 +23,7 @@ class SubmissionDetailScreen(ttk.Frame):
         self._submission_id = submission_id
         self._period_id = period_id
         self._is_archived = False  # _load() で上書き
+        self._sub: dict | None = None  # _load() 成功後に設定
         self._build()
         self._load()
 
@@ -41,13 +42,15 @@ class SubmissionDetailScreen(ttk.Frame):
         btn_frame = ttk.LabelFrame(self, text="操作", padding=8)
         btn_frame.pack(fill="x", padx=20, pady=(0, 8))
 
-        self._apply_btn = ttk.Button(btn_frame, text="採用", command=self._on_apply, width=10)
+        self._apply_btn = ttk.Button(btn_frame, text="採用", command=self._on_apply, width=10, state="disabled")
         self._apply_btn.pack(side="left", padx=4)
-        self._hold_btn = ttk.Button(btn_frame, text="保留", command=self._on_hold, width=10)
+        self._hold_btn = ttk.Button(btn_frame, text="保留", command=self._on_hold, width=10, state="disabled")
         self._hold_btn.pack(side="left", padx=4)
-        self._reject_btn = ttk.Button(btn_frame, text="却下", command=self._on_reject, width=10)
+        self._reject_btn = ttk.Button(btn_frame, text="却下", command=self._on_reject, width=10, state="disabled")
         self._reject_btn.pack(side="left", padx=4)
-        self._link_btn = ttk.Button(btn_frame, text="スタッフを紐付け", command=self._on_link_staff, width=16)
+        self._link_btn = ttk.Button(
+            btn_frame, text="スタッフを紐付け", command=self._on_link_staff, width=16, state="disabled"
+        )
         self._link_btn.pack(side="left", padx=(16, 4))
 
         # ── 日別希望テーブル ──
@@ -171,6 +174,8 @@ class SubmissionDetailScreen(ttk.Frame):
     # ── 採用/保留/却下 ───────────────────────────────────────────────────────
 
     def _on_apply(self) -> None:
+        if self._sub is None:
+            return
         sub = self._sub
         if sub["staff_id"] is None:
             show_error(self, "スタッフが未紐付けのため採用できません。")
@@ -203,9 +208,13 @@ class SubmissionDetailScreen(ttk.Frame):
         self._load()
 
     def _on_hold(self) -> None:
+        if self._sub is None:
+            return
         self._update_status("on_hold")
 
     def _on_reject(self) -> None:
+        if self._sub is None:
+            return
         self._update_status("rejected")
 
     def _update_status(self, status: str) -> None:
@@ -220,6 +229,8 @@ class SubmissionDetailScreen(ttk.Frame):
     # ── 手動スタッフ紐付け ──────────────────────────────────────────────────────
 
     def _on_link_staff(self) -> None:
+        if self._sub is None:
+            return
         try:
             staff_list = staff_repo.get_all()
         except Exception as e:
