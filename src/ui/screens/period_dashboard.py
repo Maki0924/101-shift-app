@@ -288,8 +288,9 @@ class PeriodDashboardScreen(ttk.Frame):
         self.app.show_screen(SubmissionListScreen, period_id=self._period_id)
 
     def _on_shift_edit(self) -> None:
-        # TODO: コミット19で実装
-        show_error(self, "シフト編集はまだ実装されていません。")
+        from src.ui.screens.shift_edit_screen import ShiftEditScreen
+
+        self.app.show_screen(ShiftEditScreen, period_id=self._period_id)
 
     def _on_print(self) -> None:
         # TODO: コミット24で実装
