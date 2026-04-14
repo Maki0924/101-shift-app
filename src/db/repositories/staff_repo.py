@@ -40,6 +40,14 @@ def get_active() -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
+def get_all_part_time_active() -> list[dict]:
+    """有効なバイトスタッフのみを表示順で返す（進捗サマリーの未提出人数算出用）。"""
+    rows = get_connection().execute(
+        f"SELECT * FROM staff WHERE is_active = 1 AND employment_type = 'part_time' {_ORDER_BY}"
+    ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def get_by_id(staff_id: int) -> dict | None:
     row = get_connection().execute(
         "SELECT * FROM staff WHERE id = ?", (staff_id,)

@@ -179,8 +179,14 @@ class TestStartupFlow:
         monkeypatch.setattr(backup_mod, "_DB_FILE", db_file)
         monkeypatch.setattr(backup_mod, "_BACKUP_DIR", tmp_path / "backup")
 
+        # Tkinter / UI 部分をモックアウト（UI起動はこのテストのスコープ外）
+        import unittest.mock as mock
         import main as main_mod
-        main_mod.main()
+        dummy_app = mock.MagicMock()
+        with mock.patch("main.App", return_value=dummy_app), \
+             mock.patch("main.threading.Thread"), \
+             mock.patch("main.check_credentials", return_value=mock.MagicMock(available=False)):
+            main_mod.main()
 
         # main() 完了後に DB が存在し、app_settings が投入されていることを確認
         import sqlite3
