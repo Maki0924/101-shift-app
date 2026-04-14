@@ -283,8 +283,9 @@ class PeriodDashboardScreen(ttk.Frame):
         self.app.show_screen(StartScreen)
 
     def _on_submission_list(self) -> None:
-        # TODO: コミット17で実装
-        show_error(self, "回答受信一覧はまだ実装されていません。")
+        from src.ui.screens.submission_list_screen import SubmissionListScreen
+
+        self.app.show_screen(SubmissionListScreen, period_id=self._period_id)
 
     def _on_shift_edit(self) -> None:
         # TODO: コミット19で実装
