@@ -98,5 +98,6 @@ class StartScreen(ttk.Frame):
         self.app.show_screen(PeriodCreateScreen)
 
     def _on_settings(self) -> None:
-        # TODO: コミット16で設定画面を実装する
-        show_error(self, "設定画面はまだ実装されていません。")
+        from src.ui.screens.settings_screen import SettingsScreen
+
+        self.app.show_screen(SettingsScreen)
