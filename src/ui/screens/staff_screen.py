@@ -98,15 +98,16 @@ class StaffScreen(ttk.Frame):
             self._toggle_btn.configure(state="normal", text=label)
 
     def _on_add(self) -> None:
-        def on_save(name, employment_type, hourly_wage, sort_order):
+        def on_save(name, employment_type, hourly_wage, sort_order) -> bool:
             try:
                 staff_repo.create(name, employment_type, hourly_wage, sort_order)
             except Exception as e:
                 get_logger().error("スタッフ作成に失敗: %s", e, exc_info=True)
                 show_error(self, "保存に失敗しました。")
-                return
+                return False
             self._trigger_form_update()
             self._load()
+            return True
 
         _StaffDialog(self, title="スタッフを追加", on_save=on_save)
 
@@ -118,15 +119,16 @@ class StaffScreen(ttk.Frame):
         if staff is None:
             return
 
-        def on_save(name, employment_type, hourly_wage, sort_order):
+        def on_save(name, employment_type, hourly_wage, sort_order) -> bool:
             try:
                 staff_repo.update(staff["id"], name, employment_type, hourly_wage, sort_order)
             except Exception as e:
                 get_logger().error("スタッフ更新に失敗: %s", e, exc_info=True)
                 show_error(self, "保存に失敗しました。")
-                return
+                return False
             self._trigger_form_update()
             self._load()
+            return True
 
         _StaffDialog(self, title="スタッフを編集", staff=staff, on_save=on_save)
 
@@ -264,5 +266,5 @@ class _StaffDialog(tk.Toplevel):
             show_error(self, "並び順は整数を入力してください。")
             return
 
-        self._on_save(name, employment_type, hourly_wage, sort_order)
-        self.destroy()
+        if self._on_save(name, employment_type, hourly_wage, sort_order):
+            self.destroy()

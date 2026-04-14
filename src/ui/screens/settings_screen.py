@@ -309,7 +309,7 @@ class SettingsScreen(ttk.Frame):
         exclude_auto_holiday: bool,
         wage_bonus: float | None,
         note_text: str | None,
-    ) -> None:
+    ) -> bool:
         try:
             custom_day_repo.upsert(
                 period_id=0,
@@ -322,8 +322,9 @@ class SettingsScreen(ttk.Frame):
         except Exception as e:
             get_logger().error("特別日設定の保存に失敗: %s", e, exc_info=True)
             show_error(self, "保存に失敗しました。")
-            return
+            return False
         self._load_custom()
+        return True
 
     def _on_custom_delete(self) -> None:
         sel = self._custom_tree.selection()
@@ -441,11 +442,11 @@ class _CustomDayDialog(tk.Toplevel):
 
         note_text = self._note_var.get().strip() or None
 
-        self._on_save(
+        if self._on_save(
             date_str,
             self._holiday_var.get(),
             self._exclude_var.get(),
             wage_bonus,
             note_text,
-        )
-        self.destroy()
+        ):
+            self.destroy()
