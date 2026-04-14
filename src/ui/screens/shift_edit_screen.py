@@ -225,13 +225,14 @@ class ShiftEditScreen(ttk.Frame):
             mark=mark_rec,
             edit_mode=self._edit_mode,
             day_wage_info=day_wage_info,
+            is_archived=self._is_archived,
         )
         self._right_panel.grid(row=0, column=1, sticky="ns", padx=(4, 0))
 
     # ── 右パネルコールバック ─────────────────────────────────────────────────
 
     def _on_apply_wish(self, staff_id: int, work_date: str) -> None:
-        if self._grid is None:
+        if self._grid is None or self._is_archived:
             return
         wish_shifts = self._grid.get_wish_shifts(staff_id)
         day_wish = next((w for w in wish_shifts if w["work_date"] == work_date), None)
@@ -324,13 +325,18 @@ class ShiftEditScreen(ttk.Frame):
         self._on_cell_select(staff_id, work_date)
 
     def _on_save_memo(self, staff_id: int, work_date: str, text: str | None) -> None:
+        if self._is_archived:
+            return
         before_rec = None
         try:
             before_rec = memo_repo.get_one(self._period_id, staff_id, work_date)
             after_rec = memo_repo.upsert(self._period_id, staff_id, work_date, text)
         except Exception as e:
             get_logger().error("メモ保存失敗: %s", e, exc_info=True)
+            show_error(self, "メモの保存に失敗しました。")
+            self.set_save_status("保存失敗", "red")
             return
+        self.set_save_status("保存済み", "green")
         before_text = before_rec["memo_text"] if before_rec else None
         if before_text != text:
             self._undo_stack.push(
@@ -346,6 +352,8 @@ class ShiftEditScreen(ttk.Frame):
             self._update_undo_redo_buttons()
 
     def _on_toggle_mark(self, staff_id: int, work_date: str, color: str) -> None:
+        if self._is_archived:
+            return
         try:
             existing = mark_repo.get_one(self._period_id, staff_id, work_date)
             if existing and existing["mark_color"] == color:
@@ -356,6 +364,7 @@ class ShiftEditScreen(ttk.Frame):
         except Exception as e:
             get_logger().error("色付け失敗: %s", e, exc_info=True)
             show_error(self, "色付けの保存に失敗しました。")
+            self.set_save_status("保存失敗", "red")
             return
 
         self._undo_stack.push(
@@ -369,6 +378,7 @@ class ShiftEditScreen(ttk.Frame):
             )
         )
         self._update_undo_redo_buttons()
+        self.set_save_status("保存済み", "green")
         shift = self._grid.get_shift(staff_id, work_date) if self._grid else None
         if self._grid:
             self._grid.refresh_cell(staff_id, work_date, shift, mark_rec)
@@ -447,9 +457,9 @@ class ShiftEditScreen(ttk.Frame):
         try:
             if entry.kind == "shift":
                 if target is None:
-                    # 「未編集」状態に戻す場合（レコードを削除する手段がないため NULL/NULL で代用）
-                    edited_shift_repo.clear(entry.period_id, entry.staff_id, entry.work_date)
-                    shift = edited_shift_repo.get_one(entry.period_id, entry.staff_id, entry.work_date)
+                    # 「未編集」状態に戻す（レコード削除 = 未編集、NULL/NULL = 勤務なし を区別）
+                    edited_shift_repo.delete(entry.period_id, entry.staff_id, entry.work_date)
+                    shift = None
                 else:
                     shift = edited_shift_repo.upsert(
                         entry.period_id,
@@ -678,6 +688,10 @@ class ShiftEditScreen(ttk.Frame):
         from src.ui.screens.period_dashboard import PeriodDashboardScreen
 
         self.app.show_screen(PeriodDashboardScreen, period_id=self._period_id)
+
+    @property
+    def _is_archived(self) -> bool:
+        return self._period is not None and self._period["status"] == "archived"
 
     def set_save_status(self, text: str, color: str = "gray") -> None:
         self._save_lbl.configure(text=text, foreground=color)

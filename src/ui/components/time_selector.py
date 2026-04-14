@@ -103,8 +103,8 @@ class TimeSelector(ttk.Combobox):
 
     def _on_focus_out(self, event: tk.Event) -> None:
         # フォーカス移動先がパートナーなら保存トリガーしない（§14-3）
-        focus_widget = self.tk.call("focus") if hasattr(self.tk, "call") else None
-        if self._partner is not None and focus_widget == str(self._partner):
+        focus_widget = self.focus_get()
+        if self._partner is not None and focus_widget is self._partner:
             return
         self._commit()
 

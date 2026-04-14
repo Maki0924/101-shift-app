@@ -163,7 +163,8 @@ class RightPanel(ttk.Frame):
         self._memo_txt.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
 
-        ttk.Button(f, text="メモを保存", command=self._on_save_memo_clicked).pack(padx=8, pady=(0, 8), anchor="w")
+        self._memo_save_btn = ttk.Button(f, text="メモを保存", command=self._on_save_memo_clicked)
+        self._memo_save_btn.pack(padx=8, pady=(0, 8), anchor="w")
         self._memo_txt.bind("<FocusOut>", lambda _e: self._on_save_memo_clicked())
 
     # ── 情報タブ ─────────────────────────────────────────────────────────────
@@ -194,6 +195,7 @@ class RightPanel(ttk.Frame):
         mark: dict | None,
         edit_mode: bool,
         day_wage_info: dict | None = None,
+        is_archived: bool = False,
     ) -> None:
         """セルが選択されたときにパネルを更新する。"""
         self._staff_id = staff["id"]
@@ -203,9 +205,9 @@ class RightPanel(ttk.Frame):
         date = datetime.date.fromisoformat(work_date)
         self._cell_lbl.configure(text=f"{staff['name']}  {date.month}/{date.day}（{_WDAY_JP[date.weekday()]}）")
 
-        self._update_wish_tab(wish_shifts, work_date)
+        self._update_wish_tab(wish_shifts, work_date, is_archived)
         self._update_edit_tab(shift, edit_mode)
-        self._update_memo_tab(memo, mark)
+        self._update_memo_tab(memo, mark, is_archived)
         self._update_info_tab(day_wage_info, edit_mode)
 
         # 情報タブは編集モード時のみ
@@ -217,7 +219,7 @@ class RightPanel(ttk.Frame):
 
     # ── タブ更新 ─────────────────────────────────────────────────────────────
 
-    def _update_wish_tab(self, wish_shifts: list[dict], work_date: str) -> None:
+    def _update_wish_tab(self, wish_shifts: list[dict], work_date: str, is_archived: bool = False) -> None:
         # 当日の希望を抽出
         day_wish = next((w for w in wish_shifts if w["work_date"] == work_date), None)
         if day_wish is None:
@@ -233,7 +235,8 @@ class RightPanel(ttk.Frame):
         else:
             wish_text = "希望（データ不正）"
         self._wish_lbl.configure(text=wish_text)
-        self._apply_wish_btn.configure(state="normal" if (s is not None and e is not None) else "disabled")
+        can_apply = (s is not None and e is not None) and not is_archived
+        self._apply_wish_btn.configure(state="normal" if can_apply else "disabled")
 
     def _update_edit_tab(self, shift: dict | None, edit_mode: bool) -> None:
         state = "readonly" if edit_mode else "disabled"
@@ -248,16 +251,25 @@ class RightPanel(ttk.Frame):
             self._start_sel.set_value(None)
             self._end_sel.set_value(None)
 
-    def _update_memo_tab(self, memo: dict | None, mark: dict | None) -> None:
+    def _update_memo_tab(self, memo: dict | None, mark: dict | None, is_archived: bool = False) -> None:
         self._memo_txt.delete("1.0", "end")
         if memo and memo.get("memo_text"):
             self._memo_txt.insert("1.0", memo["memo_text"])
+        self._memo_txt.configure(state="disabled" if is_archived else "normal")
 
-        # 色ボタンの状態（同色再押下で解除できるようにrelief変更）
+        # 色ボタンの状態（archived 時は無効化・同色再押下で解除できるようにrelief変更）
         current_color = mark["mark_color"] if mark else None
-        self._mark_red_btn.configure(relief="sunken" if current_color == "red" else "raised")
-        self._mark_yellow_btn.configure(relief="sunken" if current_color == "yellow" else "raised")
+        mark_state = "disabled" if is_archived else "normal"
+        self._mark_red_btn.configure(
+            relief="sunken" if current_color == "red" else "raised",
+            state=mark_state,
+        )
+        self._mark_yellow_btn.configure(
+            relief="sunken" if current_color == "yellow" else "raised",
+            state=mark_state,
+        )
         self._mark_none_lbl.configure(foreground="black" if current_color is None else "gray")
+        self._memo_save_btn.configure(state="disabled" if is_archived else "normal")
 
     def _update_info_tab(self, day_wage_info: dict | None, edit_mode: bool) -> None:
         if day_wage_info is None or not edit_mode:
