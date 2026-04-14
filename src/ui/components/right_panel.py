@@ -1,8 +1,8 @@
-"""右パネルコンポーネント（コミット20）
+"""右パネルコンポーネント（コミット20・21）
 
 セル選択時に表示される4タブパネル。
 - 希望タブ: 希望開始/終了・備考・「希望を反映」ボタン
-- 編集タブ: 開始/終了の時刻入力・クリアボタン（コミット21で時刻入力を完成させる）
+- 編集タブ: 開始/終了の時刻入力（TimeSelector）・クリアボタン
 - メモタブ: 店長メモ・手動色トグル（赤/黄）
 - 情報タブ（編集モード時のみ）: 当日/累計人件費・週何回希望・週判定
 """
@@ -13,6 +13,8 @@ import datetime
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
+
+from src.ui.components.time_selector import TimeSelector
 
 # 情報タブの週判定表示
 _JUDGMENT_LABELS = {
@@ -104,21 +106,19 @@ class RightPanel(ttk.Frame):
     def _build_edit_tab(self) -> None:
         f = self._tab_edit
         ttk.Label(f, text="開始:").grid(row=0, column=0, sticky="w", padx=8, pady=4)
-        self._start_var = tk.StringVar()
-        self._start_cb = ttk.Combobox(f, textvariable=self._start_var, state="readonly", width=7)
-        self._start_cb["values"] = _time_choices()
-        self._start_cb.grid(row=0, column=1, padx=4, pady=4)
+        self._start_sel = TimeSelector(f, on_commit=self._on_start_commit, state="disabled")
+        self._start_sel.grid(row=0, column=1, padx=4, pady=4)
 
         ttk.Label(f, text="終了:").grid(row=1, column=0, sticky="w", padx=8, pady=4)
-        self._end_var = tk.StringVar()
-        self._end_cb = ttk.Combobox(f, textvariable=self._end_var, state="readonly", width=7)
-        self._end_cb["values"] = _time_choices()
-        self._end_cb.grid(row=1, column=1, padx=4, pady=4)
+        self._end_sel = TimeSelector(f, on_commit=self._on_end_commit, state="disabled")
+        self._end_sel.grid(row=1, column=1, padx=4, pady=4)
+
+        # パートナー設定（開始→終了へのフォーカス移動は保存トリガーにしない）
+        self._start_sel.set_partner(self._end_sel)
+        self._end_sel.set_partner(self._start_sel)
 
         btn_frame = ttk.Frame(f)
         btn_frame.grid(row=2, column=0, columnspan=2, padx=8, pady=(4, 8))
-        self._save_shift_btn = ttk.Button(btn_frame, text="保存", command=self._on_save_shift_clicked, width=8)
-        self._save_shift_btn.pack(side="left", padx=4)
         self._clear_btn = ttk.Button(btn_frame, text="クリア", command=self._on_clear_clicked, width=8)
         self._clear_btn.pack(side="left", padx=4)
 
@@ -237,17 +237,16 @@ class RightPanel(ttk.Frame):
 
     def _update_edit_tab(self, shift: dict | None, edit_mode: bool) -> None:
         state = "readonly" if edit_mode else "disabled"
-        self._start_cb.configure(state=state)
-        self._end_cb.configure(state=state)
-        self._save_shift_btn.configure(state="normal" if edit_mode else "disabled")
+        self._start_sel.configure(state=state)
+        self._end_sel.configure(state=state)
         self._clear_btn.configure(state="normal" if edit_mode else "disabled")
 
         if shift:
-            self._start_var.set(_float_to_str(shift.get("start_time")))
-            self._end_var.set(_float_to_str(shift.get("end_time")))
+            self._start_sel.set_value(shift.get("start_time"))
+            self._end_sel.set_value(shift.get("end_time"))
         else:
-            self._start_var.set("")
-            self._end_var.set("")
+            self._start_sel.set_value(None)
+            self._end_sel.set_value(None)
 
     def _update_memo_tab(self, memo: dict | None, mark: dict | None) -> None:
         self._memo_txt.delete("1.0", "end")
@@ -288,17 +287,24 @@ class RightPanel(ttk.Frame):
         if self._staff_id and self._work_date:
             self._on_apply_wish(self._staff_id, self._work_date)
 
-    def _on_save_shift_clicked(self) -> None:
+    def _on_start_commit(self, value: float | None) -> None:
+        """開始時刻が確定したとき（フォーカスアウト or 選択）に呼ばれる。"""
         if not (self._staff_id and self._work_date):
             return
-        start = _str_to_float(self._start_var.get())
-        end = _str_to_float(self._end_var.get())
-        self._on_save_shift(self._staff_id, self._work_date, start, end)
+        end = self._end_sel.get_value()
+        self._on_save_shift(self._staff_id, self._work_date, value, end)
+
+    def _on_end_commit(self, value: float | None) -> None:
+        """終了時刻が確定したとき（フォーカスアウト or 選択）に呼ばれる。"""
+        if not (self._staff_id and self._work_date):
+            return
+        start = self._start_sel.get_value()
+        self._on_save_shift(self._staff_id, self._work_date, start, value)
 
     def _on_clear_clicked(self) -> None:
         if self._staff_id and self._work_date:
-            self._start_var.set("")
-            self._end_var.set("")
+            self._start_sel.set_value(None)
+            self._end_sel.set_value(None)
             self._on_clear_shift(self._staff_id, self._work_date)
 
     def _on_save_memo_clicked(self) -> None:
@@ -317,35 +323,6 @@ class RightPanel(ttk.Frame):
 _WDAY_JP = ("月", "火", "水", "木", "金", "土", "日")
 
 
-def _time_choices() -> list[str]:
-    """0:00 〜 24:00 の 30分刻み選択肢リストを返す。"""
-    choices = []
-    for h in range(25):
-        choices.append(f"{h}:00")
-        if h < 24:
-            choices.append(f"{h}:30")
-    return choices
-
-
 def _fmt(v: float) -> str:
     h, m = int(v), int(round((v - int(v)) * 60))
     return f"{h}:{m:02d}" if m else str(h)
-
-
-def _float_to_str(v: float | None) -> str:
-    if v is None:
-        return ""
-    return _fmt(v)
-
-
-def _str_to_float(s: str) -> float | None:
-    s = s.strip()
-    if not s:
-        return None
-    try:
-        if ":" in s:
-            h, m = s.split(":", 1)
-            return int(h) + int(m) / 60
-        return float(s)
-    except ValueError:
-        return None
