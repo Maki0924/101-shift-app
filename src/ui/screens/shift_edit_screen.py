@@ -388,7 +388,7 @@ class ShiftEditScreen(ttk.Frame):
 
     def bulk_apply_staff(self, staff_id: int, mode: str = "all") -> None:
         """スタッフの希望シフトを一括反映する（外部から呼び出し可）。"""
-        if self._grid is None:
+        if self._grid is None or self._is_archived:
             return
         # Undo用に反映前のスナップショット
         before_shifts = edited_shift_repo.get_by_period_and_staff(self._period_id, staff_id)
