@@ -22,6 +22,7 @@ class SubmissionDetailScreen(ttk.Frame):
         self.app = app
         self._submission_id = submission_id
         self._period_id = period_id
+        self._is_archived = False  # _load() で上書き
         self._build()
         self._load()
 
@@ -80,6 +81,15 @@ class SubmissionDetailScreen(ttk.Frame):
         if sub is None:
             show_error(self, "回答が見つかりません。")
             return
+
+        try:
+            from src.db.repositories import period_repo
+
+            period = period_repo.get_by_id(self._period_id)
+            self._is_archived = period["status"] == "archived" if period else False
+        except Exception as e:
+            get_logger().error("期間ステータスの読み込みに失敗: %s", e, exc_info=True)
+            self._is_archived = False
 
         self._sub = sub
         self._render_summary(sub)
@@ -140,17 +150,21 @@ class SubmissionDetailScreen(ttk.Frame):
             )
 
     def _update_buttons(self, sub: dict) -> None:
+        # アーカイブ期間はすべての操作を禁止
+        if self._is_archived:
+            for btn in (self._apply_btn, self._hold_btn, self._reject_btn, self._link_btn):
+                btn.configure(state="disabled")
+            return
+
         linked = sub["staff_id"] is not None
         status = sub["apply_status"]
 
-        # 未紐付けは採用不可
-        self._apply_btn.configure(state="normal" if linked else "disabled")
-        # 採用済みは採用ボタン不要
-        if status == "applied":
-            self._apply_btn.configure(state="disabled")
-        # 保留・却下は現在のステータスに応じてグレーアウト
-        self._hold_btn.configure(state="normal" if status != "on_hold" else "disabled")
-        self._reject_btn.configure(state="normal" if status != "rejected" else "disabled")
+        # 未紐付け・採用済みは採用ボタン不要
+        self._apply_btn.configure(state="normal" if linked and status != "applied" else "disabled")
+        # applied からの保留/却下は wish_shifts の整合性を保てないため禁止
+        # 採用取り消しは別の回答を採用する（apply()の旧採用解除フロー）で行う
+        self._hold_btn.configure(state="normal" if status not in ("on_hold", "applied") else "disabled")
+        self._reject_btn.configure(state="normal" if status not in ("rejected", "applied") else "disabled")
         # 既に紐付け済みでも変更可能（再紐付け）
         self._link_btn.configure(state="normal")
 
