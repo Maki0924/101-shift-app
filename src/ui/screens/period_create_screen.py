@@ -59,10 +59,12 @@ def _parse_date(s: str) -> datetime.date | None:
 class PeriodCreateScreen(ttk.Frame):
     """新規作成モード（period=None）と編集モード（period=dict）を共用する。"""
 
-    def __init__(self, master: tk.Misc, app, period: dict | None = None, **kwargs) -> None:
+    def __init__(self, master: tk.Misc, app, period: dict | None = None,
+                 back_period_id: int | None = None, **kwargs) -> None:
         super().__init__(master, **kwargs)
         self.app = app
         self._period = period  # None = 新規作成、dict = 編集
+        self._back_period_id = back_period_id  # None = スタート画面から、int = ダッシュボードから
         self._build()
         self._fill_defaults()
 
@@ -111,6 +113,7 @@ class PeriodCreateScreen(ttk.Frame):
             self._entries["end_date"].insert(0, end)
             self._entries["submission_deadline"].insert(0, deadline)
         self._update_deadline_warning()
+        self._entries["name"].focus_set()
 
     def _on_deadline_change(self, _event=None) -> None:
         self._update_deadline_warning()
@@ -180,5 +183,9 @@ class PeriodCreateScreen(ttk.Frame):
         self.app.show_screen(PeriodDashboardScreen, period_id=saved["id"])
 
     def _on_cancel(self) -> None:
-        from src.ui.screens.start_screen import StartScreen
-        self.app.show_screen(StartScreen)
+        if self._back_period_id is not None:
+            from src.ui.screens.period_dashboard import PeriodDashboardScreen
+            self.app.show_screen(PeriodDashboardScreen, period_id=self._back_period_id)
+        else:
+            from src.ui.screens.start_screen import StartScreen
+            self.app.show_screen(StartScreen)

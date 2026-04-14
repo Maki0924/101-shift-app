@@ -289,7 +289,7 @@ class PeriodDashboardScreen(ttk.Frame):
         if self._period is None:
             return
         from src.ui.screens.period_create_screen import PeriodCreateScreen
-        self.app.show_screen(PeriodCreateScreen, period=self._period)
+        self.app.show_screen(PeriodCreateScreen, period=self._period, back_period_id=self._period_id)
 
     def _on_back(self) -> None:
         from src.ui.screens.start_screen import StartScreen
