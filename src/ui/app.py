@@ -57,12 +57,17 @@ class App(tk.Tk):
 
     def _poll_ui_queue(self) -> None:
         """ワーカースレッドからのUI更新要求をメインスレッドで処理する。"""
-        try:
-            while True:
+        from src.utils.logger import get_logger
+
+        while True:
+            try:
                 fn = self._ui_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
                 fn()
-        except queue.Empty:
-            pass
+            except Exception as e:
+                get_logger().error("post_to_ui のコールバックで例外: %s", e, exc_info=True)
         self.after(100, self._poll_ui_queue)
 
     def post_to_ui(self, fn: Callable[[], None]) -> None:
