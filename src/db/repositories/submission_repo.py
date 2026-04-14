@@ -16,10 +16,9 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
 
 # ── submissions ───────────────────────────────────────────────────────────────
 
+
 def get_by_id(submission_id: int) -> dict | None:
-    row = get_connection().execute(
-        "SELECT * FROM submissions WHERE id = ?", (submission_id,)
-    ).fetchone()
+    row = get_connection().execute("SELECT * FROM submissions WHERE id = ?", (submission_id,)).fetchone()
     return _row_to_dict(row) if row else None
 
 
@@ -28,8 +27,10 @@ def get_by_period(period_id: int) -> list[dict]:
 
     ソート: pending → applied → on_hold → rejected、同一ステータス内は submitted_at DESC → id DESC
     """
-    rows = get_connection().execute(
-        """
+    rows = (
+        get_connection()
+        .execute(
+            """
         SELECT * FROM submissions
         WHERE period_id = ?
         ORDER BY
@@ -42,17 +43,24 @@ def get_by_period(period_id: int) -> list[dict]:
             submitted_at DESC,
             id DESC
         """,
-        (period_id,),
-    ).fetchall()
+            (period_id,),
+        )
+        .fetchall()
+    )
     return [_row_to_dict(r) for r in rows]
 
 
 def exists_by_key(external_submission_key: str) -> bool:
     """同一キーの回答が既に存在するか確認する（冪等性チェック）。"""
-    return get_connection().execute(
-        "SELECT 1 FROM submissions WHERE external_submission_key = ?",
-        (external_submission_key,),
-    ).fetchone() is not None
+    return (
+        get_connection()
+        .execute(
+            "SELECT 1 FROM submissions WHERE external_submission_key = ?",
+            (external_submission_key,),
+        )
+        .fetchone()
+        is not None
+    )
 
 
 def create(
@@ -77,9 +85,16 @@ def create(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
             """,
             (
-                period_id, staff_id, raw_staff_name, external_submission_key,
-                submitted_at, note_text, weekly_pref_min, weekly_pref_max,
-                now, now,
+                period_id,
+                staff_id,
+                raw_staff_name,
+                external_submission_key,
+                submitted_at,
+                note_text,
+                weekly_pref_min,
+                weekly_pref_max,
+                now,
+                now,
             ),
         )
     new_id = cursor.lastrowid
@@ -119,9 +134,16 @@ def create_with_day_entries(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?)
             """,
             (
-                period_id, staff_id, raw_staff_name, external_submission_key,
-                submitted_at, note_text, weekly_pref_min, weekly_pref_max,
-                now, now,
+                period_id,
+                staff_id,
+                raw_staff_name,
+                external_submission_key,
+                submitted_at,
+                note_text,
+                weekly_pref_min,
+                weekly_pref_max,
+                now,
+                now,
             ),
         )
         new_id = cursor.lastrowid
@@ -144,6 +166,25 @@ def create_with_day_entries(
     if staff_id is not None:
         update_is_latest_for_staff(period_id, staff_id)
     return get_by_id(new_id)
+
+
+def get_applied_for_staff(period_id: int, staff_id: int, exclude_submission_id: int) -> list[dict]:
+    """同スタッフ・同期間の採用済み回答を返す（指定回答を除く）。
+
+    採用処理前の差し替え確認ダイアログ用。全件取得より絞り込みクエリが適切。
+    """
+    rows = (
+        get_connection()
+        .execute(
+            """
+        SELECT * FROM submissions
+        WHERE period_id = ? AND staff_id = ? AND apply_status = 'applied' AND id != ?
+        """,
+            (period_id, staff_id, exclude_submission_id),
+        )
+        .fetchall()
+    )
+    return [_row_to_dict(r) for r in rows]
 
 
 def update_apply_status(submission_id: int, status: str) -> dict | None:
@@ -218,12 +259,17 @@ def update_is_latest_for_staff(period_id: int, staff_id: int) -> None:
 
 # ── submission_day_entries ────────────────────────────────────────────────────
 
+
 def get_day_entries(submission_id: int) -> list[dict]:
     """回答の日別エントリーを work_date 昇順で返す。"""
-    rows = get_connection().execute(
-        "SELECT * FROM submission_day_entries WHERE submission_id = ? ORDER BY work_date ASC",
-        (submission_id,),
-    ).fetchall()
+    rows = (
+        get_connection()
+        .execute(
+            "SELECT * FROM submission_day_entries WHERE submission_id = ? ORDER BY work_date ASC",
+            (submission_id,),
+        )
+        .fetchall()
+    )
     return [_row_to_dict(r) for r in rows]
 
 

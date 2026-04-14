@@ -178,11 +178,9 @@ class SubmissionDetailScreen(ttk.Frame):
             return
 
         # 同スタッフ・同期間の既採用回答があるか確認
-        existing = [
-            s
-            for s in submission_repo.get_by_period(self._period_id)
-            if s["staff_id"] == sub["staff_id"] and s["apply_status"] == "applied" and s["id"] != sub["id"]
-        ]
+        existing = submission_repo.get_applied_for_staff(
+            self._period_id, sub["staff_id"], exclude_submission_id=sub["id"]
+        )
         if existing:
             if not ask_confirm(
                 self,
