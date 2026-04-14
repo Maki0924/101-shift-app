@@ -1,6 +1,7 @@
 """スタッフマスター管理画面（コミット15）"""
 
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
 
 from src.db.repositories import staff_repo
@@ -168,11 +169,12 @@ class StaffScreen(ttk.Frame):
 class _StaffDialog(tk.Toplevel):
     """スタッフ追加・編集モーダルダイアログ。"""
 
+    #: on_save(name, employment_type, hourly_wage, sort_order) -> bool
     def __init__(
         self,
         parent: tk.Widget,
         title: str,
-        on_save,
+        on_save: Callable[[str, str, float, int], bool],
         staff: dict | None = None,
     ) -> None:
         super().__init__(parent)
@@ -181,7 +183,7 @@ class _StaffDialog(tk.Toplevel):
         self.grab_set()
         self.transient(parent)
         self._staff = staff
-        self._on_save = on_save
+        self._on_save: Callable[[str, str, float, int], bool] = on_save
         self._build()
         self._fill()
         self.wait_visibility()

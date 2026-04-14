@@ -4,6 +4,7 @@ app_settings 全項目編集フォームと custom_day_rules（グローバル�
 """
 
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import ttk
 
 from src.db.repositories import custom_day_repo, settings_repo
@@ -357,10 +358,11 @@ class SettingsScreen(ttk.Frame):
 class _CustomDayDialog(tk.Toplevel):
     """特別日ルール追加・編集モーダルダイアログ。"""
 
+    #: on_save(rule_date, is_custom_holiday, exclude_auto_holiday, wage_bonus, note_text) -> bool
     def __init__(
         self,
         parent: tk.Widget,
-        on_save,
+        on_save: Callable[[str, bool, bool, float | None, str | None], bool],
         rule: dict | None = None,
     ) -> None:
         super().__init__(parent)
@@ -369,7 +371,7 @@ class _CustomDayDialog(tk.Toplevel):
         self.grab_set()
         self.transient(parent)
         self._rule = rule
-        self._on_save = on_save
+        self._on_save: Callable[[str, bool, bool, float | None, str | None], bool] = on_save
         self._build()
         self._fill()
         self.wait_visibility()
