@@ -1,0 +1,50 @@
+"""App._poll_ui_queue のテスト"""
+
+import queue
+from unittest import mock
+
+from src.ui.app import App
+
+
+class TestPollUiQueue:
+    def _make_app(self):
+        """Tk 初期化をスキップして App インスタンスを生成する。"""
+        app = App.__new__(App)
+        app._ui_queue = queue.SimpleQueue()
+        app.after = mock.Mock()
+        return app
+
+    def test_executes_queued_callbacks(self):
+        app = self._make_app()
+        results = []
+        app._ui_queue.put(lambda: results.append(1))
+        app._ui_queue.put(lambda: results.append(2))
+
+        app._poll_ui_queue()
+
+        assert results == [1, 2]
+
+    def test_reschedules_after_even_if_callback_raises(self):
+        app = self._make_app()
+        app._ui_queue.put(lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+
+        app._poll_ui_queue()
+
+        app.after.assert_called_once_with(100, app._poll_ui_queue)
+
+    def test_subsequent_callbacks_run_after_exception(self):
+        app = self._make_app()
+        results = []
+        app._ui_queue.put(lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+        app._ui_queue.put(lambda: results.append("ok"))
+
+        app._poll_ui_queue()
+
+        assert results == ["ok"]
+
+    def test_empty_queue_still_reschedules(self):
+        app = self._make_app()
+
+        app._poll_ui_queue()
+
+        app.after.assert_called_once_with(100, app._poll_ui_queue)

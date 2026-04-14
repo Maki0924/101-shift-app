@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from tkinter import ttk
 
 from src.ui.components.status_bar import StatusBar
+from src.utils.logger import get_logger
 
 
 @dataclass(frozen=True)
@@ -57,8 +58,6 @@ class App(tk.Tk):
 
     def _poll_ui_queue(self) -> None:
         """ワーカースレッドからのUI更新要求をメインスレッドで処理する。"""
-        from src.utils.logger import get_logger
-
         while True:
             try:
                 fn = self._ui_queue.get_nowait()
