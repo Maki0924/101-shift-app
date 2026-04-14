@@ -6,14 +6,17 @@ from tkinter import ttk
 from src.db.repositories import staff_repo, submission_repo
 from src.logic.apply_submission import ApplyError, apply
 from src.ui.components.dialogs import ask_confirm, show_error
+from src.ui.screens.submission_list_screen import _STATUS_LABELS
 from src.utils.logger import get_logger
 
-_STATUS_LABELS = {
-    "pending": "未処理",
-    "applied": "採用済",
-    "on_hold": "保留",
-    "rejected": "却下",
-}
+
+def _fmt_time(v: float | None) -> str:
+    """REAL型の時刻（例: 9.5）を 'h:mm' 形式に変換する。None は '—' を返す。"""
+    if v is None:
+        return "—"
+    h = int(v)
+    m = int(round((v - h) * 60))
+    return f"{h}:{m:02d}"
 
 
 class SubmissionDetailScreen(ttk.Frame):
@@ -133,16 +136,9 @@ class SubmissionDetailScreen(ttk.Frame):
             get_logger().error("日別エントリーの読み込みに失敗: %s", e, exc_info=True)
             return
 
-        def fmt_time(v):
-            if v is None:
-                return "—"
-            h = int(v)
-            m = int(round((v - h) * 60))
-            return f"{h}:{m:02d}"
-
         for entry in entries:
-            s = fmt_time(entry["start_time"])
-            e = fmt_time(entry["end_time"])
+            s = _fmt_time(entry["start_time"])
+            e = _fmt_time(entry["end_time"])
             # 両方 None は勤務不可（フォーム未入力）
             if entry["start_time"] is None and entry["end_time"] is None:
                 s, e = "勤務不可", ""
