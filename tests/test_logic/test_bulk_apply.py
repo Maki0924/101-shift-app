@@ -156,3 +156,35 @@ class TestBulkApplyEdgeCases:
 
         with pytest.raises(ValueError, match="mode は"):
             bulk_apply(p["id"], s["id"], mode="invalid")
+
+
+class TestReplaceBulk:
+    def test_replace_bulk_removes_records_not_in_target(self):
+        """Undo で before=[] を渡すと既存レコードが全削除される（一括反映 Undo 修正の核心）。"""
+        p = _make_period()
+        s = _make_staff()
+        _upsert_edited(p["id"], s["id"], "2026-10-21", 9.0, 17.0)
+        _upsert_edited(p["id"], s["id"], "2026-10-22", 10.0, 18.0)
+
+        edited_shift_repo.replace_bulk(p["id"], s["id"], [])
+
+        remaining = edited_shift_repo.get_by_period_and_staff(p["id"], s["id"])
+        assert remaining == []
+
+    def test_replace_bulk_replaces_with_new_records(self):
+        """target に含まれる日付のみ残り、それ以外は削除される。"""
+        p = _make_period()
+        s = _make_staff()
+        _upsert_edited(p["id"], s["id"], "2026-10-21", 9.0, 17.0)
+        _upsert_edited(p["id"], s["id"], "2026-10-22", 10.0, 18.0)
+
+        edited_shift_repo.replace_bulk(
+            p["id"],
+            s["id"],
+            [{"work_date": "2026-10-21", "start_time": 8.0, "end_time": 16.0}],
+        )
+
+        remaining = edited_shift_repo.get_by_period_and_staff(p["id"], s["id"])
+        assert len(remaining) == 1
+        assert remaining[0]["work_date"] == "2026-10-21"
+        assert remaining[0]["start_time"] == 8.0

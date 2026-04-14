@@ -487,8 +487,8 @@ class ShiftEditScreen(ttk.Frame):
                 memo_repo.upsert(entry.period_id, entry.staff_id, entry.work_date, text)
 
             elif entry.kind == "bulk":
-                shifts = target or []
-                edited_shift_repo.upsert_bulk(entry.period_id, entry.staff_id, shifts)
+                # replace_bulk: 全削除→再挿入で「元になかったレコード」も正しく消える
+                edited_shift_repo.replace_bulk(entry.period_id, entry.staff_id, target or [])
                 self._reload_grid()
                 return
 

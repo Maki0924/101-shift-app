@@ -103,6 +103,30 @@ def clear(period_id: int, staff_id: int, work_date: str) -> None:
     upsert(period_id, staff_id, work_date, None, None)
 
 
+def replace_bulk(period_id: int, staff_id: int, shifts: list[dict]) -> None:
+    """スタッフの編集シフトを全削除してから再生成する（Undo/Redo一括復元用）。
+
+    upsert_bulk と異なり、shifts に含まれない日付のレコードも削除される。
+    shifts の各要素は {"work_date": str, "start_time": float|None, "end_time": float|None}
+    shifts が空の場合は全削除のみ行う。
+    """
+    now = _now()
+    with transaction() as txn:
+        txn.execute(
+            "DELETE FROM edited_shifts WHERE period_id = ? AND staff_id = ?",
+            (period_id, staff_id),
+        )
+        for s in shifts:
+            txn.execute(
+                """
+                INSERT INTO edited_shifts
+                    (period_id, staff_id, work_date, start_time, end_time, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (period_id, staff_id, s["work_date"], s.get("start_time"), s.get("end_time"), now, now),
+            )
+
+
 def delete(period_id: int, staff_id: int, work_date: str) -> None:
     """指定セルのレコードを削除する（未編集状態に戻す、Undo用）。"""
     with transaction() as txn:
