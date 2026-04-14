@@ -1,6 +1,8 @@
 """アプリケーションルートウィンドウ・画面切り替え機構"""
 
+import queue
 import tkinter as tk
+from collections.abc import Callable
 from dataclasses import dataclass
 from tkinter import ttk
 
@@ -14,6 +16,7 @@ class AppWarning:
     period_id: 対象期間ID（アプリ全体の警告は None）
     message: 警告メッセージ
     """
+
     period_id: int | None
     message: str
 
@@ -47,6 +50,28 @@ class App(tk.Tk):
         self.status_bar.pack(side="bottom", fill="x")
 
         self._current_screen: ttk.Frame | None = None
+
+        # スレッドセーフUI更新用キュー（ワーカースレッドから直接 after() を呼ばないこと）
+        self._ui_queue: queue.SimpleQueue[Callable[[], None]] = queue.SimpleQueue()
+        self.after(100, self._poll_ui_queue)
+
+    def _poll_ui_queue(self) -> None:
+        """ワーカースレッドからのUI更新要求をメインスレッドで処理する。"""
+        try:
+            while True:
+                fn = self._ui_queue.get_nowait()
+                fn()
+        except queue.Empty:
+            pass
+        self.after(100, self._poll_ui_queue)
+
+    def post_to_ui(self, fn: Callable[[], None]) -> None:
+        """ワーカースレッドからスレッドセーフにUI更新をスケジュールする。
+
+        ワーカースレッドから Tkinter を操作する際は after() の代わりにこのメソッドを使うこと。
+        キューに積まれた関数は約100ms以内にメインスレッドで実行される。
+        """
+        self._ui_queue.put(fn)
 
     def show_screen(self, screen_cls: type[ttk.Frame], **kwargs) -> ttk.Frame:
         """指定した画面クラスのインスタンスを生成して表示する。

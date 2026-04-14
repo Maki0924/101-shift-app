@@ -30,16 +30,12 @@ def _run_auto_sync(app) -> None:
     feature/google-api マージ後に実接続コードへ差し替える。
     UIをブロックしないようにバックグラウンドスレッドで実行する。
 
-    NOTE: 実接続に差し替える際、SyncResult をUIに渡す処理も含め
-    すべてのUI操作を app.after(0, ...) 経由で実行すること。
-    バックグラウンドスレッドから直接 Tkinter ウィジェットを操作すると
-    スレッド安全性の問題が発生する。
+    NOTE: 実接続に差し替える際、すべてのUI操作は app.post_to_ui(...) 経由で行うこと。
+    ワーカースレッドから after() を直接呼ぶことは禁止（スレッド安全性の問題）。
     """
-    app.after(0, lambda: app.status_bar.set_sync_message("自動同期中…"))
+    app.post_to_ui(lambda: app.status_bar.set_sync_message("自動同期中…"))
     # TODO: 実接続に差し替える（collecting / editing 期間を順次同期）
-    # NOTE: stub では after(0, ...) が連続キューされるため「自動同期中…」は視覚的に表示されない。
-    # 実接続時は同期処理完了コールバック内で after(0, ...) を呼ぶこと。
-    app.after(0, lambda: app.status_bar.set_sync_message(""))
+    app.post_to_ui(lambda: app.status_bar.set_sync_message(""))
 
 
 def main() -> None:

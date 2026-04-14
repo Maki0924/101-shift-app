@@ -54,22 +54,14 @@ class PeriodDashboardScreen(ttk.Frame):
         # ── 警告インジケーター（コンテナを常に pack し、子の表示で高さを制御）──
         warn_container = ttk.Frame(self)
         warn_container.pack(fill="x", padx=20, pady=(0, 4))
-        self._warn_btn = ttk.Button(
-            warn_container, text="⚠ 警告があります", command=self._on_show_warnings
-        )
+        self._warn_btn = ttk.Button(warn_container, text="⚠ 警告があります", command=self._on_show_warnings)
 
         # ── ステータス遷移ボタン ──
         status_frame = ttk.LabelFrame(self, text="ステータス操作", padding=10)
         status_frame.pack(fill="x", padx=20, pady=4)
-        self._start_edit_btn = ttk.Button(
-            status_frame, text="編集開始", command=self._on_start_editing, width=14
-        )
-        self._archive_btn = ttk.Button(
-            status_frame, text="アーカイブ", command=self._on_archive, width=14
-        )
-        self._unarchive_btn = ttk.Button(
-            status_frame, text="アーカイブ解除", command=self._on_unarchive, width=14
-        )
+        self._start_edit_btn = ttk.Button(status_frame, text="編集開始", command=self._on_start_editing, width=14)
+        self._archive_btn = ttk.Button(status_frame, text="アーカイブ", command=self._on_archive, width=14)
+        self._unarchive_btn = ttk.Button(status_frame, text="アーカイブ解除", command=self._on_unarchive, width=14)
 
         # ── アクションボタン ──
         action_frame = ttk.LabelFrame(self, text="操作", padding=10)
@@ -130,8 +122,7 @@ class PeriodDashboardScreen(ttk.Frame):
         status_label = _STATUS_LABELS.get(period["status"], period["status"])
         self._title_label.configure(text=f"{period['name']}  [{status_label}]")
         self._info_label.configure(
-            text=f"対象期間: {period['start_date']} 〜 {period['end_date']}　"
-                 f"提出期限: {period['submission_deadline']}"
+            text=f"対象期間: {period['start_date']} 〜 {period['end_date']}　提出期限: {period['submission_deadline']}"
         )
 
         # 進捗サマリー
@@ -147,8 +138,7 @@ class PeriodDashboardScreen(ttk.Frame):
 
             self._progress_label.configure(
                 text=(
-                    f"回答件数: {total}件　採用済み: {applied}件　"
-                    f"未提出バイト: {unsubmitted}人　未紐付け: {unlinked}件"
+                    f"回答件数: {total}件　採用済み: {applied}件　未提出バイト: {unsubmitted}人　未紐付け: {unlinked}件"
                 )
             )
         except Exception as e:
@@ -223,17 +213,17 @@ class PeriodDashboardScreen(ttk.Frame):
     def _on_manual_sync(self) -> None:
         """手動Sheets同期（stub: no-op）。
 
-        NOTE: 実接続に差し替える際、すべてのUI操作を app.after(0, ...) 経由で行うこと。
-        バックグラウンドスレッドから直接 Tkinter ウィジェットを操作しないこと。
+        NOTE: 実接続に差し替える際、すべてのUI操作は app.post_to_ui(...) 経由で行うこと。
+        ワーカースレッドから after() を直接呼ぶことは禁止（スレッド安全性の問題）。
         """
         self._sync_btn.configure(state="disabled")
         threading.Thread(target=self._sync_worker, daemon=True).start()
 
     def _sync_worker(self) -> None:
-        self.app.after(0, lambda: self.app.status_bar.set_sync_message("同期中…"))
+        self.app.post_to_ui(lambda: self.app.status_bar.set_sync_message("同期中…"))
         # TODO: 実接続に差し替える（collecting / editing 全期間を順次同期）
-        self.app.after(0, lambda: self.app.status_bar.set_sync_message(""))
-        self.app.after(0, self._on_sync_done)
+        self.app.post_to_ui(lambda: self.app.status_bar.set_sync_message(""))
+        self.app.post_to_ui(self._on_sync_done)
 
     def _on_sync_done(self) -> None:
         # 同期中に画面遷移が起きると self が破棄されている可能性があるため確認する
@@ -289,10 +279,12 @@ class PeriodDashboardScreen(ttk.Frame):
         if self._period is None:
             return
         from src.ui.screens.period_create_screen import PeriodCreateScreen
+
         self.app.show_screen(PeriodCreateScreen, period=self._period, back_period_id=self._period_id)
 
     def _on_back(self) -> None:
         from src.ui.screens.start_screen import StartScreen
+
         self.app.show_screen(StartScreen)
 
     def _on_submission_list(self) -> None:
