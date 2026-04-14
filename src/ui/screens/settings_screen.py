@@ -454,7 +454,7 @@ class _CustomDayDialog(tk.Toplevel):
         if bonus_str:
             try:
                 wage_bonus = float(bonus_str)
-                if wage_bonus < 0:
+                if not math.isfinite(wage_bonus) or wage_bonus < 0:
                     raise ValueError
             except ValueError:
                 show_error(self, "加算額は0以上の数値を入力してください。")
