@@ -75,7 +75,6 @@ class PrintScreen(ttk.Frame):
         self._title_lbl = ttk.Label(top, text="印刷プレビュー", font=("", 14))
         self._title_lbl.pack(side="left")
         ttk.Button(top, text="戻る", command=self._on_back, width=8).pack(side="right")
-        # 印刷ボタン: commit 25 で有効化
         self._print_btn = ttk.Button(top, text="印刷", command=self._on_print, width=8, state="disabled")
         self._print_btn.pack(side="right", padx=(0, 6))
 
@@ -192,12 +191,14 @@ class PrintScreen(ttk.Frame):
             self._current_page = 0
             self._update_nav()
             self._canvas.delete("all")
+            self._print_btn.configure(state="disabled")
             return
 
         self._layout = calc_layout(dates, self._staff_list)
         self._current_page = 0
         self._update_nav()
         self._draw_current_page()
+        self._print_btn.configure(state="normal" if self._layout.pages else "disabled")
 
     def _draw_current_page(self) -> None:
         self._canvas.delete("all")
@@ -310,8 +311,35 @@ class PrintScreen(ttk.Frame):
         self._canvas.yview_scroll(delta, "units")
 
     def _on_print(self) -> None:
-        # commit 25 で実装
-        show_error(self, "印刷機能はまだ実装されていません。")
+        if self._period is None or not self._layout or not self._layout.pages:
+            return
+
+        from_str = self._from_var.get().strip()
+        to_str = self._to_var.get().strip()
+
+        try:
+            from src.logic.printer import print_shift as _print_shift
+
+            _print_shift(
+                period=self._period,
+                from_date_str=from_str,
+                to_date_str=to_str,
+                staff_list=self._staff_list,
+                edited=self._edited,
+                marks=self._marks,
+                rules=self._rules,
+            )
+        except Exception as e:
+            get_logger().error("印刷エラー: %s", e, exc_info=True)
+            show_error(self, f"印刷に失敗しました:\n{e}")
+            return
+
+        # archived 期間以外は印刷設定を保存
+        if self._period.get("status") != "archived":
+            try:
+                print_settings_repo.upsert(self._period_id, from_str, to_str)
+            except Exception as e:
+                get_logger().warning("印刷設定の保存に失敗: %s", e)
 
     def _on_back(self) -> None:
         from src.ui.screens.period_dashboard import PeriodDashboardScreen
