@@ -298,5 +298,6 @@ class PeriodDashboardScreen(ttk.Frame):
         self.app.show_screen(PrintScreen, period_id=self._period_id)
 
     def _on_wish_search(self) -> None:
-        # TODO: コミット26で実装
-        show_error(self, "希望検索はまだ実装されていません。")
+        from src.ui.screens.wish_search_screen import WishSearchScreen
+
+        self.app.show_screen(WishSearchScreen, period_id=self._period_id)
