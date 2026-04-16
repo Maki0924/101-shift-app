@@ -68,12 +68,35 @@ def print_shift(
     layout = calc_layout(dates, staff_list, font_size=font_size)
     html_str = _build_html(period, layout, edited, marks, rules)
 
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as f:
-        f.write(html_str)
-        tmp_path = f.name
+    tmp_path = _write_preview_html(html_str)
 
     # webbrowser.open は Windows / macOS / Linux 対応
     webbrowser.open(Path(tmp_path).as_uri())
+
+
+# アプリ専用の一時ディレクトリ名
+_PREVIEW_DIR_NAME = "shift_app_preview"
+
+
+def _write_preview_html(html_str: str) -> str:
+    """専用サブディレクトリにプレビュー HTML を書き出し、古いファイルを削除する。
+
+    Returns:
+        書き出したファイルの絶対パス文字列。
+    """
+    preview_dir = Path(tempfile.gettempdir()) / _PREVIEW_DIR_NAME
+    preview_dir.mkdir(exist_ok=True)
+
+    # 古いプレビュー HTML を掃除する
+    for old in preview_dir.glob("*.html"):
+        try:
+            old.unlink()
+        except OSError:
+            pass  # 他プロセスが開いている場合などは無視
+
+    out = preview_dir / "preview.html"
+    out.write_text(html_str, encoding="utf-8")
+    return str(out)
 
 
 def _build_html(
