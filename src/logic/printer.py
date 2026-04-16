@@ -17,6 +17,8 @@ from __future__ import annotations
 import datetime
 import html
 import tempfile
+import time
+import uuid
 import webbrowser
 from pathlib import Path
 
@@ -76,10 +78,16 @@ def print_shift(
 
 # アプリ専用の一時ディレクトリ名
 _PREVIEW_DIR_NAME = "shift_app_preview"
+# この秒数以上経過した *.html を掃除対象とする（デフォルト: 1時間）
+_PREVIEW_MAX_AGE_SECONDS = 3600
 
 
 def _write_preview_html(html_str: str) -> str:
-    """専用サブディレクトリにプレビュー HTML を書き出し、古いファイルを削除する。
+    """専用サブディレクトリに一意なプレビュー HTML を書き出し、古いファイルを掃除する。
+
+    ファイル名は uuid4 で一意にするため、複数のプレビューを同時に開いても
+    互いに上書き・削除しない。mtime が _PREVIEW_MAX_AGE_SECONDS を超えた
+    ファイルのみ掃除する。
 
     Returns:
         書き出したファイルの絶対パス文字列。
@@ -87,16 +95,22 @@ def _write_preview_html(html_str: str) -> str:
     preview_dir = Path(tempfile.gettempdir()) / _PREVIEW_DIR_NAME
     preview_dir.mkdir(exist_ok=True)
 
-    # 古いプレビュー HTML を掃除する
-    for old in preview_dir.glob("*.html"):
-        try:
-            old.unlink()
-        except OSError:
-            pass  # 他プロセスが開いている場合などは無視
+    _cleanup_old_previews(preview_dir, _PREVIEW_MAX_AGE_SECONDS)
 
-    out = preview_dir / "preview.html"
+    out = preview_dir / f"preview_{uuid.uuid4().hex}.html"
     out.write_text(html_str, encoding="utf-8")
     return str(out)
+
+
+def _cleanup_old_previews(preview_dir: Path, max_age_seconds: int) -> None:
+    """mtime が max_age_seconds 以上経過した *.html を削除する。"""
+    now = time.time()
+    for old in preview_dir.glob("*.html"):
+        try:
+            if now - old.stat().st_mtime > max_age_seconds:
+                old.unlink()
+        except OSError:
+            pass  # 他プロセスが開いている場合などは無視
 
 
 def _build_html(
