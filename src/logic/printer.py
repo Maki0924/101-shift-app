@@ -1,6 +1,7 @@
 """印刷処理（コミット25）
 
-HTML テーブルを生成し、macOS の `open` コマンド経由でブラウザの印刷ダイアログを開く。
+HTML テーブルを生成し、webbrowser.open() 経由でブラウザの印刷ダイアログを開く。
+webbrowser モジュールは Windows / macOS / Linux 対応の標準ライブラリ。
 外部ライブラリ不要。reportlab / fpdf2 は使用しない。
 
 生成する HTML は以下の仕様:
@@ -8,14 +9,16 @@ HTML テーブルを生成し、macOS の `open` コマンド経由でブラウ�
 - スタッフ × 日付テーブル（セル色: 手動色 > 曜日色）
 - ページ境界は CSS page-break-after で制御
 - 人件費・サマリー行なし（§17-5）
+- 期間外の日付列も印刷（セル空欄・曜日色）
 """
 
 from __future__ import annotations
 
 import datetime
 import html
-import subprocess
 import tempfile
+import webbrowser
+from pathlib import Path
 
 from src.logic.holiday import is_holiday, is_saturday, is_sunday
 from src.logic.print_layout import PageLayout, calc_layout
@@ -42,6 +45,7 @@ def print_shift(
     edited: dict[tuple[int, str], dict],
     marks: dict[tuple[int, str], str],
     rules: list[dict],
+    font_size: int = 10,
 ) -> None:
     """シフト表を HTML で生成してブラウザの印刷ダイアログで開く。
 
@@ -53,24 +57,23 @@ def print_shift(
         edited: {(staff_id, work_date): shift_record}
         marks: {(staff_id, work_date): mark_color}
         rules: custom_day_rules レコードリスト
+        font_size: ターゲットフォントサイズ（pt）
     """
-    from_date = datetime.date.fromisoformat(from_date_str)
-    to_date = datetime.date.fromisoformat(to_date_str)
-
-    all_dates = make_date_list(period["start_date"], period["end_date"])
-    dates = [d for d in all_dates if from_date.isoformat() <= d <= to_date.isoformat()]
+    # 指定範囲をそのまま日付リストにする（期間外の列はセル空欄・曜日色）
+    dates = make_date_list(from_date_str, to_date_str)
 
     if not dates or not staff_list:
         return
 
-    layout = calc_layout(dates, staff_list)
+    layout = calc_layout(dates, staff_list, font_size=font_size)
     html_str = _build_html(period, layout, edited, marks, rules)
 
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as f:
         f.write(html_str)
         tmp_path = f.name
 
-    subprocess.Popen(["open", tmp_path])
+    # webbrowser.open は Windows / macOS / Linux 対応
+    webbrowser.open(Path(tmp_path).as_uri())
 
 
 def _build_html(

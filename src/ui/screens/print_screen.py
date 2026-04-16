@@ -63,6 +63,7 @@ class PrintScreen(ttk.Frame):
         self._current_page = 0
         self._from_var = tk.StringVar()
         self._to_var = tk.StringVar()
+        self._font_size_var = tk.StringVar(value="10")
         self._build()
         self._load()
 
@@ -78,13 +79,22 @@ class PrintScreen(ttk.Frame):
         self._print_btn = ttk.Button(top, text="印刷", command=self._on_print, width=8, state="disabled")
         self._print_btn.pack(side="right", padx=(0, 6))
 
-        # ── 日付範囲 ──
+        # ── 日付範囲・フォントサイズ ──
         range_frame = ttk.LabelFrame(self, text="印刷範囲", padding=6)
         range_frame.pack(fill="x", padx=16, pady=(0, 4))
         ttk.Label(range_frame, text="開始日:").pack(side="left")
         ttk.Entry(range_frame, textvariable=self._from_var, width=12).pack(side="left", padx=(4, 12))
         ttk.Label(range_frame, text="終了日:").pack(side="left")
         ttk.Entry(range_frame, textvariable=self._to_var, width=12).pack(side="left", padx=(4, 12))
+        ttk.Label(range_frame, text="フォントサイズ:").pack(side="left")
+        ttk.Spinbox(
+            range_frame,
+            textvariable=self._font_size_var,
+            from_=6,
+            to=14,
+            width=4,
+            state="readonly",
+        ).pack(side="left", padx=(4, 12))
         ttk.Button(range_frame, text="更新", command=self._on_update_range, width=6).pack(side="left")
 
         # ── ページナビ ──
@@ -172,19 +182,17 @@ class PrintScreen(ttk.Frame):
             show_error(self, "日付の形式が不正です（YYYY-MM-DD）。")
             return
 
-        # 期間内にクランプ
-        period_start = datetime.date.fromisoformat(self._period["start_date"])
-        period_end = datetime.date.fromisoformat(self._period["end_date"])
-        from_date = max(from_date, period_start)
-        to_date = min(to_date, period_end)
-
         if from_date > to_date:
             show_error(self, "開始日が終了日より後になっています。")
             return
 
-        # 日付リスト（期間の全日付から範囲を切り出す）
-        all_dates = make_date_list(self._period["start_date"], self._period["end_date"])
-        dates = [d for d in all_dates if from_date.isoformat() <= d <= to_date.isoformat()]
+        try:
+            font_size = int(self._font_size_var.get())
+        except ValueError:
+            font_size = 10
+
+        # 指定範囲をそのまま日付リストにする（期間外の列はセル空欄・曜日色）
+        dates = make_date_list(from_str, to_str)
 
         if not dates:
             self._layout = None
@@ -194,7 +202,7 @@ class PrintScreen(ttk.Frame):
             self._print_btn.configure(state="disabled")
             return
 
-        self._layout = calc_layout(dates, self._staff_list)
+        self._layout = calc_layout(dates, self._staff_list, font_size=font_size)
         self._current_page = 0
         self._update_nav()
         self._draw_current_page()
@@ -316,6 +324,10 @@ class PrintScreen(ttk.Frame):
 
         from_str = self._from_var.get().strip()
         to_str = self._to_var.get().strip()
+        try:
+            font_size = int(self._font_size_var.get())
+        except ValueError:
+            font_size = 10
 
         try:
             from src.logic.printer import print_shift as _print_shift
@@ -328,6 +340,7 @@ class PrintScreen(ttk.Frame):
                 edited=self._edited,
                 marks=self._marks,
                 rules=self._rules,
+                font_size=font_size,
             )
         except Exception as e:
             get_logger().error("印刷エラー: %s", e, exc_info=True)

@@ -33,7 +33,7 @@ from src.utils.logger import get_logger
 
 _EMP_OPTIONS = ("全員", "バイト", "社員")
 _CONFIRMED_OPTIONS = ("全員", "なし", "あり")
-_EMP_TYPE_MAP = {"バイト": "part_time", "社員": "full_time"}
+_EMP_TYPE_MAP = {"バイト": "part_time", "社員": "employee"}
 
 # 結果ツリービュー列定義
 _COLUMNS = ("name", "wish_time", "note", "weekly_pref", "confirmed_count")
@@ -199,8 +199,12 @@ class WishSearchScreen(ttk.Frame):
         week_start = search_date - datetime.timedelta(days=search_date.weekday())
         week_end = week_start + datetime.timedelta(days=6)
 
-        # ── フィルタリング＆結果構築 ──
-        results: list[tuple] = []
+        # スタッフ表示順マップ（get_for_period の返り順）
+        staff_order = {sid: idx for idx, sid in enumerate(self._staff_map)}
+
+        # ── フィルタリング＆結果構築（sort key 付き）──
+        # raw: (wish_start, staff_order_idx, display_row)
+        raw: list[tuple[float, int, tuple]] = []
         seen_staff: set[int] = set()  # 同一スタッフの複数希望は重複表示
 
         for wish in day_wishes:
@@ -216,9 +220,9 @@ class WishSearchScreen(ttk.Frame):
                 continue
 
             # 時間帯重複フィルター
+            w_start = wish.get("start_time")
+            w_end = wish.get("end_time")
             if search_start is not None and search_end is not None:
-                w_start = wish.get("start_time")
-                w_end = wish.get("end_time")
                 if w_start is None or w_end is None:
                     continue
                 overlap = max(0.0, min(w_end, search_end) - max(w_start, search_start))
@@ -238,7 +242,7 @@ class WishSearchScreen(ttk.Frame):
                     continue
 
             # ── 表示値を計算 ──
-            wish_time = _fmt_time_range(wish.get("start_time"), wish.get("end_time"))
+            wish_time = _fmt_time_range(w_start, w_end)
             sub = self._submission_map.get(wish.get("submission_id") or -1)
             note = (sub or {}).get("note_text") or ""
             weekly_pref = _fmt_weekly_pref(
@@ -251,16 +255,21 @@ class WishSearchScreen(ttk.Frame):
                 week_end,
             )
 
-            results.append((st["name"], wish_time, note, weekly_pref, str(confirmed_count)))
+            sort_start = w_start if w_start is not None else float("inf")
+            sort_order = staff_order.get(staff_id, len(self._staff_map))
+            raw.append((sort_start, sort_order, (st["name"], wish_time, note, weekly_pref, str(confirmed_count))))
             seen_staff.add(staff_id)
+
+        # 希望開始が早い順 → スタッフ表示順
+        raw.sort(key=lambda x: (x[0], x[1]))
 
         # ── Treeview 更新 ──
         for item in self._tree.get_children():
             self._tree.delete(item)
-        for row in results:
+        for _, _, row in raw:
             self._tree.insert("", "end", values=row)
 
-        self._count_lbl.configure(text=f"検索結果: {len(results)} 件")
+        self._count_lbl.configure(text=f"検索結果: {len(raw)} 件")
 
     # ── 画面遷移 ────────────────────────────────────────────────────────────
 
