@@ -272,7 +272,7 @@ class PeriodDashboardScreen(ttk.Frame):
             )
             creds = auth.load_credentials(APP_DIR / creds_filename)
             if creds is None:
-                msg = "credentials.json が見つかりません。\nexe と同じフォルダに配置してください。"
+                msg = f"{creds_filename} が見つかりません。\nexe と同じフォルダに配置してください。"
                 self.app.post_to_ui(lambda: self._on_form_error(msg))
                 return
 
@@ -312,7 +312,9 @@ class PeriodDashboardScreen(ttk.Frame):
         if not self.winfo_exists():
             return
         self.app.status_bar.set_sync_message("")
-        self._form_btn.configure(state="normal" if self.app.creds_available else "disabled")
+        # _load() で期間の現ステータスからボタン状態を再設定する
+        # （処理中にアーカイブ等の状態変化があっても正しく反映される）
+        self._load()
         show_error(self, f"フォームの作成に失敗しました。\n\n{message}")
 
     # ── 警告一覧 ────────────────────────────────────────────────────────────
