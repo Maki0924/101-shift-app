@@ -42,6 +42,39 @@ uv run ruff format .
 
 `credentials.json` がなくてもアプリ本体は起動可能（Sheets同期機能のみ無効化）。
 
+## 配布（Windows exe ビルド）
+
+### ビルド手順
+
+```bash
+# PyInstaller をインストール（開発環境のみ）
+pip install pyinstaller
+
+# exe をビルド
+pyinstaller build.spec
+```
+
+成功すると `dist/shift_app.exe` が生成される。
+
+### 配布パッケージの構成
+
+```
+shift_app.exe          ← 単体実行ファイル
+credentials.json       ← Google Sheets 連携用（任意・後から配置可）
+```
+
+`backup/` / `logs/` は初回起動時に自動生成されるため同梱不要。  
+`credentials.json` がなくてもアプリ本体は起動可能。
+
+### ショートカット設置手順（Windows）
+
+1. `shift_app.exe` を任意のフォルダ（例: `C:\ShiftApp\`）にコピー
+2. `shift_app.exe` を右クリック → 「ショートカットの作成」
+3. 作成したショートカットをデスクトップや任意の場所に移動
+
+> アプリはロックファイル・バックアップ・ログを **exe と同じフォルダ** に書き込む。  
+> `C:\Program Files\` など書き込み権限のない場所には配置しないこと。
+
 ## ドキュメント
 
 - [要件定義書](docs/requirements.md)
