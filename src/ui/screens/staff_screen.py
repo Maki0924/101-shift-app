@@ -9,6 +9,7 @@ from tkinter import ttk
 from src.db.repositories import settings_repo, staff_repo
 from src.sheets import auth, client
 from src.sheets import form_updater as form_updater_mod
+from src.ui.app import AppWarning
 from src.ui.components.dialogs import ask_confirm, show_error
 from src.utils.logger import get_logger
 from src.utils.paths import APP_DIR
@@ -187,6 +188,9 @@ class StaffScreen(ttk.Frame):
             if failures:
                 for f in failures:
                     get_logger().warning("フォームプルダウン更新失敗: %s", f)
+                    self.app.warnings.append(
+                        AppWarning(period_id=f["period_id"], message=f"フォームプルダウン更新失敗: {f['error']}")
+                    )
         except Exception as e:
             get_logger().error("フォームプルダウン更新に失敗: %s", e, exc_info=True)
 

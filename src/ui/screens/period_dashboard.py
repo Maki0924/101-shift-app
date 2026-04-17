@@ -237,6 +237,10 @@ class PeriodDashboardScreen(ttk.Frame):
             all_staff = staff_repo.get_all()
             staff_map = {s["name"]: s["id"] for s in all_staff if s.get("is_active")}
 
+            # 同期対象期間の既存警告をクリア（再同期で解消された警告を残さない）
+            target_ids = {p["id"] for p in targets}
+            self.app.warnings = [w for w in self.app.warnings if w.period_id not in target_ids]
+
             total_added = 0
             warnings = []
             for period in targets:
