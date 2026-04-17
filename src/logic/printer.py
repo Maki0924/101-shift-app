@@ -80,14 +80,15 @@ def print_shift(
 _PREVIEW_DIR_NAME = "shift_app_preview"
 # この秒数以上経過した *.html を掃除対象とする（デフォルト: 1時間）
 _PREVIEW_MAX_AGE_SECONDS = 3600
+# mtime 掃除後も残るファイルの上限件数（長期間未使用端末での蓄積防止）
+_PREVIEW_MAX_FILES = 10
 
 
 def _write_preview_html(html_str: str) -> str:
     """専用サブディレクトリに一意なプレビュー HTML を書き出し、古いファイルを掃除する。
 
     ファイル名は uuid4 で一意にするため、複数のプレビューを同時に開いても
-    互いに上書き・削除しない。mtime が _PREVIEW_MAX_AGE_SECONDS を超えた
-    ファイルのみ掃除する。
+    互いに上書き・削除しない。mtime ベースの掃除に加え件数上限も適用する。
 
     Returns:
         書き出したファイルの絶対パス文字列。
@@ -95,22 +96,35 @@ def _write_preview_html(html_str: str) -> str:
     preview_dir = Path(tempfile.gettempdir()) / _PREVIEW_DIR_NAME
     preview_dir.mkdir(exist_ok=True)
 
-    _cleanup_old_previews(preview_dir, _PREVIEW_MAX_AGE_SECONDS)
+    _cleanup_old_previews(preview_dir, _PREVIEW_MAX_AGE_SECONDS, _PREVIEW_MAX_FILES)
 
     out = preview_dir / f"preview_{uuid.uuid4().hex}.html"
     out.write_text(html_str, encoding="utf-8")
     return str(out)
 
 
-def _cleanup_old_previews(preview_dir: Path, max_age_seconds: int) -> None:
-    """mtime が max_age_seconds 以上経過した *.html を削除する。"""
+def _cleanup_old_previews(preview_dir: Path, max_age_seconds: int, max_files: int) -> None:
+    """mtime が古いファイルを削除し、件数が max_files を超える場合も古い順に削除する。"""
     now = time.time()
-    for old in preview_dir.glob("*.html"):
+    surviving: list[tuple[float, Path]] = []
+    for f in preview_dir.glob("*.html"):
         try:
-            if now - old.stat().st_mtime > max_age_seconds:
-                old.unlink()
+            mtime = f.stat().st_mtime
+            if now - mtime > max_age_seconds:
+                f.unlink()
+            else:
+                surviving.append((mtime, f))
         except OSError:
             pass  # 他プロセスが開いている場合などは無視
+
+    # 件数上限: mtime 古い順に削除
+    if len(surviving) > max_files:
+        surviving.sort()  # mtime 昇順（古い順）
+        for _, old_f in surviving[: len(surviving) - max_files]:
+            try:
+                old_f.unlink()
+            except OSError:
+                pass
 
 
 def _build_html(

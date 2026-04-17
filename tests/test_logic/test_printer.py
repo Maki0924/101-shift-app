@@ -3,6 +3,7 @@
 - uuid ファイル名で一意になること
 - 連続2回呼ぶと別ファイルになること
 - mtime が古いファイルだけ掃除され、新しいファイルは残ること
+- 件数が上限を超えたとき mtime 古い順に削除されること
 - 削除で OSError が出ても書き込みは継続されること
 """
 
@@ -16,7 +17,12 @@ from unittest import mock
 
 import pytest
 
-from src.logic.printer import _PREVIEW_DIR_NAME, _PREVIEW_MAX_AGE_SECONDS, _write_preview_html
+from src.logic.printer import (
+    _PREVIEW_DIR_NAME,
+    _PREVIEW_MAX_AGE_SECONDS,
+    _PREVIEW_MAX_FILES,
+    _write_preview_html,
+)
 
 
 @pytest.fixture()
@@ -68,6 +74,29 @@ class TestWritePreviewHtml:
 
         assert not old_file.exists()  # 古いファイルは削除
         assert recent_file.exists()  # 新しいファイルは残る
+
+    def test_count_limit_removes_oldest_when_exceeded(self, preview_dir):
+        """件数が上限を超えたとき、mtime が古いファイルから削除される。"""
+        preview_dir.mkdir(parents=True, exist_ok=True)
+
+        # 上限 + 2 個の新しいファイルを mtime を少しずつ古くして作成
+        files = []
+        for i in range(_PREVIEW_MAX_FILES + 2):
+            f = preview_dir / f"preview_{i:03d}.html"
+            f.write_text(f"content {i}")
+            # index が小さいほど古い（ただし閾値内）
+            mtime = time.time() - (_PREVIEW_MAX_FILES + 2 - i) * 10
+            os.utime(f, (mtime, mtime))
+            files.append(f)
+
+        _write_preview_html("<html>new</html>")
+
+        # 最古 2 件が削除されているはず
+        assert not files[0].exists()
+        assert not files[1].exists()
+        # 3 番目以降は残る
+        assert files[2].exists()
+        assert files[-1].exists()
 
     def test_oserror_on_delete_does_not_abort_write(self, preview_dir):
         """削除で OSError が出ても書き込みは継続される。"""
