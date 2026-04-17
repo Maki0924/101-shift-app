@@ -15,6 +15,8 @@ import src.db.connection as conn_module
 from src.db.connection import close_connection, init_connection
 from src.db.init_db import init_db
 from src.db.repositories import period_repo
+from src.sheets.sync import SyncResult
+from src.ui.app import AppWarning
 from src.ui.screens.period_dashboard import PeriodDashboardScreen
 
 
@@ -168,3 +170,62 @@ class TestFormUrlOverwriteConfirm:
 
         mock_confirm.assert_not_called()
         mock_thread.assert_called_once()
+
+
+# ── 同期警告の種別管理 ────────────────────────────────────────────────────────
+
+
+def _run_sync_worker(screen: PeriodDashboardScreen, sync_result: SyncResult) -> None:
+    """_sync_worker を外部依存をすべてモックして実行するヘルパー。"""
+    pid = screen._period_id
+    with (
+        mock.patch(
+            "src.ui.screens.period_dashboard.settings_repo.get",
+            return_value={"credentials_filename": "creds.json"},
+        ),
+        mock.patch("src.ui.screens.period_dashboard.auth.load_credentials", return_value=mock.Mock()),
+        mock.patch("src.ui.screens.period_dashboard.client.build_sheets", return_value=mock.Mock()),
+        mock.patch(
+            "src.ui.screens.period_dashboard.period_repo.get_by_status",
+            side_effect=lambda s: [period_repo.get_by_id(pid)] if s == "collecting" else [],
+        ),
+        mock.patch("src.ui.screens.period_dashboard.staff_repo.get_all", return_value=[]),
+        mock.patch("src.ui.screens.period_dashboard.sync_period", return_value=sync_result),
+    ):
+        screen._sync_worker()
+
+
+class TestSyncWarningKind:
+    def test_resync_replaces_sync_warnings_only(self):
+        """再同期で同期由来の警告だけが新しい内容に置き換わる。"""
+        screen = _make_screen(status="collecting")
+        pid = screen._period_id
+
+        # 同種別の旧警告とフォーム更新失敗警告を事前に積む
+        screen.app.warnings = [
+            AppWarning(period_id=pid, message="古い同期警告", kind="sync"),
+            AppWarning(period_id=pid, message="フォームプルダウン更新失敗: 旧エラー", kind="form_update"),
+        ]
+
+        result = SyncResult(period_id=pid, added=0, warnings=["新しい同期警告"])
+        _run_sync_worker(screen, result)
+
+        sync_warnings = [w for w in screen.app.warnings if w.kind == "sync"]
+        assert len(sync_warnings) == 1
+        assert sync_warnings[0].message == "新しい同期警告"
+
+    def test_form_update_warning_survives_sync(self):
+        """フォーム更新失敗警告は手動同期後も消えない。"""
+        screen = _make_screen(status="collecting")
+        pid = screen._period_id
+
+        screen.app.warnings = [
+            AppWarning(period_id=pid, message="フォームプルダウン更新失敗: permission denied", kind="form_update"),
+        ]
+
+        # sync_period が警告なしで完了してもフォーム警告は残る
+        result = SyncResult(period_id=pid, added=2, warnings=[])
+        _run_sync_worker(screen, result)
+
+        assert any(w.kind == "form_update" for w in screen.app.warnings)
+        assert not any(w.kind == "sync" for w in screen.app.warnings)
