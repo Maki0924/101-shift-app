@@ -7,10 +7,13 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
-from src.db.repositories import period_repo, staff_repo, submission_repo
+from src.db.repositories import period_repo, settings_repo, staff_repo, submission_repo
+from src.sheets import auth, client
+from src.sheets import form_builder as form_builder_mod
 from src.ui.app import STATUS_LABELS
 from src.ui.components.dialogs import ask_confirm, show_error
 from src.utils.logger import get_logger
+from src.utils.paths import APP_DIR
 
 
 class PeriodDashboardScreen(ttk.Frame):
@@ -176,11 +179,10 @@ class PeriodDashboardScreen(ttk.Frame):
         # 正規フロー: アーカイブ解除 → editing で編集 → 再アーカイブ
         self._edit_period_btn.configure(state="disabled" if is_archived else "normal")
 
-        # Sheets同期・フォーム自動生成
-        # TODO: google-api統合後に有効化。現時点ではスタブのため常に disabled。
-        # 将来の有効化条件: not is_archived and self.app.creds_available
-        self._sync_btn.configure(state="disabled")
-        self._form_btn.configure(state="disabled")
+        # Sheets同期・フォーム自動生成: credentials がある場合のみ有効
+        api_ok = self.app.creds_available and not is_archived
+        self._sync_btn.configure(state="disabled")  # 手動同期は引き続きスタブ
+        self._form_btn.configure(state="normal" if api_ok else "disabled")
 
     # ── ステータス遷移 ────────────────────────────────────────────────────────
 
@@ -241,11 +243,77 @@ class PeriodDashboardScreen(ttk.Frame):
             return
         self._load()
 
-    # ── フォーム自動生成（stub）──────────────────────────────────────────────
+    # ── フォーム自動生成 ──────────────────────────────────────────────────────
 
     def _on_create_form(self) -> None:
-        # TODO: google-api統合後に form_builder.create_and_register を呼び出す
-        show_error(self, "フォーム自動生成は未実装です（google-api統合後に有効化）。")
+        """フォーム自動生成ボタン: バックグラウンドスレッドで Google API を呼び出す。"""
+        if self._period is None:
+            return
+        if self._period.get("form_url"):
+            if not ask_confirm(
+                self,
+                "すでにフォームURLが登録されています。\n上書きして新しいフォームを作成しますか？",
+            ):
+                return
+
+        self._form_btn.configure(state="disabled")
+        self.app.status_bar.set_sync_message("フォーム作成中…")
+        threading.Thread(target=self._form_worker, daemon=True).start()
+
+    def _form_worker(self) -> None:
+        """フォーム作成処理（ワーカースレッド）。UI 操作は post_to_ui 経由のみ。"""
+        try:
+            # credentials ロード
+            app_settings = settings_repo.get()
+            creds_filename = (
+                app_settings["credentials_filename"]
+                if app_settings and app_settings.get("credentials_filename")
+                else "credentials.json"
+            )
+            creds = auth.load_credentials(APP_DIR / creds_filename)
+            if creds is None:
+                msg = "credentials.json が見つかりません。\nexe と同じフォルダに配置してください。"
+                self.app.post_to_ui(lambda: self._on_form_error(msg))
+                return
+
+            # API サービス構築
+            forms_svc = client.build_forms(creds)
+            sheets_svc = client.build_sheets(creds)
+            drive_svc = client.build_drive(creds)
+
+            # スタッフ名一覧（並び順通り）
+            staff_list = staff_repo.get_for_period(self._period_id)
+            staff_names = [s["name"] for s in staff_list]
+
+            # フォーム作成 & DB 登録
+            form_builder_mod.create_and_register(self._period_id, staff_names, forms_svc, sheets_svc, drive_svc)
+
+            self.app.post_to_ui(self._on_form_done)
+
+        except Exception as e:
+            get_logger().error("フォーム自動生成に失敗: %s", e, exc_info=True)
+            msg = str(e)
+            self.app.post_to_ui(lambda: self._on_form_error(msg))
+
+    def _on_form_done(self) -> None:
+        """フォーム作成成功時の UI 更新（メインスレッド）。"""
+        if not self.winfo_exists():
+            return
+        self.app.status_bar.set_sync_message("")
+        self._load()
+        # 最新の form_url をダイアログで案内
+        period = period_repo.get_by_id(self._period_id)
+        url = period.get("form_url") if period else None
+        msg = f"フォームを作成しました。\n\nフォームURL:\n{url}" if url else "フォームを作成しました。"
+        show_error(self, msg, title="フォーム作成完了")
+
+    def _on_form_error(self, message: str) -> None:
+        """フォーム作成失敗時の UI 更新（メインスレッド）。"""
+        if not self.winfo_exists():
+            return
+        self.app.status_bar.set_sync_message("")
+        self._form_btn.configure(state="normal" if self.app.creds_available else "disabled")
+        show_error(self, f"フォームの作成に失敗しました。\n\n{message}")
 
     # ── 警告一覧 ────────────────────────────────────────────────────────────
 
