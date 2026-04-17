@@ -1,0 +1,44 @@
+name: Windows exe ビルド
+
+# v1.0.0 のようなバージョンタグを push したときだけ実行
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python 3.11 をセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: uv をインストール
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: 依存関係をインストール（dev 含む）
+        run: uv sync --dev
+
+      - name: PyInstaller で exe をビルド
+        run: uv run pyinstaller build.spec
+
+      - name: ビルド成果物をアップロード
+        uses: actions/upload-artifact@v4
+        with:
+          name: shift_app-windows
+          path: dist/shift_app.exe
+          if-no-files-found: error
+
+      - name: GitHub Release に exe をアップロード
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/shift_app.exe
+          generate_release_notes: true
