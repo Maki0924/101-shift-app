@@ -198,12 +198,7 @@ class StaffScreen(ttk.Frame):
         except Exception as e:
             get_logger().error("フォームプルダウン更新に失敗: %s", e, exc_info=True)
             err_msg = f"フォーム自動更新失敗: {e}"
-
-            def _show_and_schedule_clear() -> None:
-                self.app.status_bar.set_sync_message(err_msg)
-                self.app.status_bar.after(8000, lambda: self.app.status_bar.set_sync_message(""))
-
-            self.app.post_to_ui(_show_and_schedule_clear)
+            self.app.post_to_ui(lambda: self.app.status_bar.set_timed_sync_message(err_msg))
 
     def _on_back(self) -> None:
         from src.ui.screens.settings_screen import SettingsScreen
