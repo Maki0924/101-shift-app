@@ -47,11 +47,11 @@ uv run ruff format .
 ### ビルド手順
 
 ```bash
-# PyInstaller をインストール（開発環境のみ）
-pip install pyinstaller
+# 依存関係を揃える（PyInstaller も dev deps に含まれる）
+uv sync
 
 # exe をビルド
-pyinstaller build.spec
+uv run pyinstaller build.spec
 ```
 
 成功すると `dist/shift_app.exe` が生成される。
@@ -77,5 +77,6 @@ credentials.json       ← Google Sheets 連携用（任意・後から配置可
 
 ## ドキュメント
 
-- [要件定義書](docs/requirements.md)
-- [詳細実装仕様](docs/detailed_spec.md)
+- [改善済み仕様書](docs/improvements.md)
+- [実装コミット計画](docs/commit_plan.md)
+- [画面ワイヤーフレーム](docs/wireframes.md)
