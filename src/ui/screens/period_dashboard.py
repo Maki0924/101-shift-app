@@ -10,7 +10,8 @@ from tkinter import ttk
 from src.db.repositories import period_repo, settings_repo, staff_repo, submission_repo
 from src.sheets import auth, client
 from src.sheets import form_builder as form_builder_mod
-from src.ui.app import STATUS_LABELS
+from src.sheets.sync import sync_period
+from src.ui.app import STATUS_LABELS, AppWarning
 from src.ui.components.dialogs import ask_confirm, show_error
 from src.utils.logger import get_logger
 from src.utils.paths import APP_DIR
@@ -181,7 +182,7 @@ class PeriodDashboardScreen(ttk.Frame):
 
         # Sheets同期・フォーム自動生成: credentials がある場合のみ有効
         api_ok = self.app.creds_available and not is_archived
-        self._sync_btn.configure(state="disabled")  # 手動同期は引き続きスタブ
+        self._sync_btn.configure(state="normal" if api_ok else "disabled")
         self._form_btn.configure(state="normal" if api_ok else "disabled")
 
     # ── ステータス遷移 ────────────────────────────────────────────────────────
@@ -205,30 +206,69 @@ class PeriodDashboardScreen(ttk.Frame):
             return
         self._load()
 
-    # ── 手動同期（stub）────────────────────────────────────────────────────────
+    # ── 手動同期 ──────────────────────────────────────────────────────────────
 
     def _on_manual_sync(self) -> None:
-        """手動Sheets同期（stub: no-op）。
-
-        NOTE: 実接続に差し替える際、すべてのUI操作は app.post_to_ui(...) 経由で行うこと。
-        ワーカースレッドから after() を直接呼ぶことは禁止（スレッド安全性の問題）。
-        """
+        """手動Sheets同期: collecting / editing の全期間をバックグラウンドで順次同期する。"""
         self._sync_btn.configure(state="disabled")
+        self.app.status_bar.set_sync_message("同期中…")
         threading.Thread(target=self._sync_worker, daemon=True).start()
 
     def _sync_worker(self) -> None:
-        self.app.post_to_ui(lambda: self.app.status_bar.set_sync_message("同期中…"))
-        # TODO: 実接続に差し替える（collecting / editing 全期間を順次同期）
-        self.app.post_to_ui(lambda: self.app.status_bar.set_sync_message(""))
-        self.app.post_to_ui(self._on_sync_done)
+        """同期処理（ワーカースレッド）。UI 操作は post_to_ui 経由のみ。"""
+        try:
+            # credentials ロード
+            app_settings = settings_repo.get()
+            creds_filename = (
+                app_settings["credentials_filename"]
+                if app_settings and app_settings.get("credentials_filename")
+                else "credentials.json"
+            )
+            creds = auth.load_credentials(APP_DIR / creds_filename)
+            if creds is None:
+                msg = f"{creds_filename} が見つかりません。"
+                self.app.post_to_ui(lambda: self._on_sync_error(msg))
+                return
 
-    def _on_sync_done(self) -> None:
-        # 同期中に画面遷移が起きると self が破棄されている可能性があるため確認する
+            sheets_svc = client.build_sheets(creds)
+
+            # collecting / editing の全期間を順次同期
+            targets = period_repo.get_by_status("collecting") + period_repo.get_by_status("editing")
+            all_staff = staff_repo.get_all()
+            staff_map = {s["name"]: s["id"] for s in all_staff if s.get("is_active")}
+
+            total_added = 0
+            warnings = []
+            for period in targets:
+                result = sync_period(period, sheets_svc, staff_map)
+                total_added += result.added
+                for w in result.warnings:
+                    warnings.append(f"[{period['name']}] {w}")
+                    self.app.warnings.append(AppWarning(period_id=period["id"], message=w))
+
+            summary = f"同期完了: {total_added}件追加"
+            if warnings:
+                summary += f"、{len(warnings)}件警告"
+            self.app.post_to_ui(lambda: self._on_sync_done(summary))
+
+        except Exception as e:
+            get_logger().error("手動同期に失敗: %s", e, exc_info=True)
+            msg = str(e)
+            self.app.post_to_ui(lambda: self._on_sync_error(msg))
+
+    def _on_sync_done(self, summary: str) -> None:
         if not self.winfo_exists():
             return
-        # _update_buttons() が _sync_btn 状態を上書きするが、_load() 失敗時のフォールバックとして先に設定
-        self._sync_btn.configure(state="disabled")  # スタブのため常に disabled
+        self.app.status_bar.set_sync_message("")
         self._load()
+        show_error(self, summary, title="同期完了")
+
+    def _on_sync_error(self, message: str) -> None:
+        if not self.winfo_exists():
+            return
+        self.app.status_bar.set_sync_message("")
+        self._load()
+        show_error(self, f"同期に失敗しました。\n\n{message}")
 
     # ── Google連携設定保存 ────────────────────────────────────────────────────
 

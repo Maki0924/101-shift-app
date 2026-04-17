@@ -1,13 +1,17 @@
 """スタッフマスター管理画面（コミット15）"""
 
 import math
+import threading
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
 
-from src.db.repositories import staff_repo
+from src.db.repositories import settings_repo, staff_repo
+from src.sheets import auth, client
+from src.sheets import form_updater as form_updater_mod
 from src.ui.components.dialogs import ask_confirm, show_error
 from src.utils.logger import get_logger
+from src.utils.paths import APP_DIR
 
 _EMPLOYMENT_LABELS = {
     "part_time": "バイト",
@@ -154,12 +158,37 @@ class StaffScreen(ttk.Frame):
         self._load()
 
     def _trigger_form_update(self) -> None:
-        """スタッフ更新後のフォームプルダウン自動更新（stub）。
+        """スタッフ更新後に collecting 期間のフォームプルダウンを自動更新する。
 
-        NOTE: feature/google-api マージ後に collecting 期間の
-        form_updater.update_all_collecting を呼び出す。
-        credentials不在時はスキップする。
+        credentials 不在時はスキップ（縮退モード）。
+        API 呼び出しはバックグラウンドスレッドで実行しUIをブロックしない。
         """
+        if not self.app.creds_available:
+            return
+        threading.Thread(target=self._form_update_worker, daemon=True).start()
+
+    def _form_update_worker(self) -> None:
+        """フォームプルダウン更新（ワーカースレッド）。"""
+        try:
+            app_settings = settings_repo.get()
+            creds_filename = (
+                app_settings["credentials_filename"]
+                if app_settings and app_settings.get("credentials_filename")
+                else "credentials.json"
+            )
+            creds = auth.load_credentials(APP_DIR / creds_filename)
+            if creds is None:
+                return  # credentials 不在は縮退モードとして無視
+
+            forms_svc = client.build_forms(creds)
+            all_staff = staff_repo.get_all()
+            staff_names = [s["name"] for s in all_staff if s.get("is_active")]
+            failures = form_updater_mod.update_all(staff_names, forms_svc)
+            if failures:
+                for f in failures:
+                    get_logger().warning("フォームプルダウン更新失敗: %s", f)
+        except Exception as e:
+            get_logger().error("フォームプルダウン更新に失敗: %s", e, exc_info=True)
 
     def _on_back(self) -> None:
         from src.ui.screens.settings_screen import SettingsScreen
