@@ -189,7 +189,11 @@ class StaffScreen(ttk.Frame):
                 for f in failures:
                     get_logger().warning("フォームプルダウン更新失敗: %s", f)
                     self.app.warnings.append(
-                        AppWarning(period_id=f["period_id"], message=f"フォームプルダウン更新失敗: {f['error']}")
+                        AppWarning(
+                            period_id=f["period_id"],
+                            message=f"フォームプルダウン更新失敗: {f['error']}",
+                            kind="form_update",
+                        )
                     )
         except Exception as e:
             get_logger().error("フォームプルダウン更新に失敗: %s", e, exc_info=True)

@@ -237,9 +237,9 @@ class PeriodDashboardScreen(ttk.Frame):
             all_staff = staff_repo.get_all()
             staff_map = {s["name"]: s["id"] for s in all_staff if s.get("is_active")}
 
-            # 同期対象期間の既存警告をクリア（再同期で解消された警告を残さない）
+            # 同期由来の警告のみクリア（フォーム更新失敗など他種別は残す）
             target_ids = {p["id"] for p in targets}
-            self.app.warnings = [w for w in self.app.warnings if w.period_id not in target_ids]
+            self.app.warnings = [w for w in self.app.warnings if not (w.period_id in target_ids and w.kind == "sync")]
 
             total_added = 0
             warnings = []
@@ -248,7 +248,7 @@ class PeriodDashboardScreen(ttk.Frame):
                 total_added += result.added
                 for w in result.warnings:
                     warnings.append(f"[{period['name']}] {w}")
-                    self.app.warnings.append(AppWarning(period_id=period["id"], message=w))
+                    self.app.warnings.append(AppWarning(period_id=period["id"], message=w, kind="sync"))
 
             summary = f"同期完了: {total_added}件追加"
             if warnings:
