@@ -2,8 +2,8 @@
 """PyInstaller ビルド設定（コミット27）
 
 ビルド手順:
-    pip install pyinstaller
-    pyinstaller build.spec
+    uv sync
+    uv run pyinstaller build.spec
 
 出力: dist/shift_app.exe（Windows）/ dist/shift_app（macOS/Linux）
 
