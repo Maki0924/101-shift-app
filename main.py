@@ -7,7 +7,7 @@
 4. DB接続・初期化・マイグレーション
 5. credentials確認
 6. Tkinter起動 → スタート画面表示
-7. バックグラウンドで自動同期（stub: no-op）
+7. バックグラウンドで自動同期
 """
 
 import sys
@@ -16,26 +16,61 @@ import threading
 from src.db.connection import close_connection, init_connection
 from src.db.init_db import init_db
 from src.db.migrations.migration_runner import run_migrations
-from src.ui.app import App
+from src.db.repositories import period_repo, settings_repo, staff_repo
+from src.sheets import auth, client
+from src.sheets.sync import sync_period
+from src.ui.app import App, AppWarning
 from src.ui.screens.start_screen import StartScreen
 from src.utils.backup import backup_on_startup
 from src.utils.credentials_checker import check as check_credentials
 from src.utils.lock import LockError, acquire_lock, release_lock
 from src.utils.logger import get_logger, setup_logger
+from src.utils.paths import APP_DIR
 
 
 def _run_auto_sync(app) -> None:
-    """起動時自動同期（stub: no-op）。
-
-    feature/google-api マージ後に実接続コードへ差し替える。
-    UIをブロックしないようにバックグラウンドスレッドで実行する。
-
-    NOTE: 実接続に差し替える際、すべてのUI操作は app.post_to_ui(...) 経由で行うこと。
-    ワーカースレッドから after() を直接呼ぶことは禁止（スレッド安全性の問題）。
-    """
+    """起動時自動同期をバックグラウンドで実行する。"""
+    logger = get_logger()
     app.post_to_ui(lambda: app.status_bar.set_sync_message("自動同期中…"))
-    # TODO: 実接続に差し替える（collecting / editing 期間を順次同期）
-    app.post_to_ui(lambda: app.status_bar.set_sync_message(""))
+    try:
+        app_settings = settings_repo.get()
+        creds_filename = (
+            app_settings["credentials_filename"]
+            if app_settings and app_settings.get("credentials_filename")
+            else "credentials.json"
+        )
+        creds = auth.load_credentials(APP_DIR / creds_filename)
+        if creds is None:
+            logger.info("Auto sync skipped: credentials unavailable")
+            app.post_to_ui(lambda: app.status_bar.set_sync_message(""))
+            return
+
+        sheets_svc = client.build_sheets(creds)
+        targets = period_repo.get_by_status("collecting") + period_repo.get_by_status("editing")
+        target_ids = {period["id"] for period in targets}
+        all_staff = staff_repo.get_all()
+        staff_map = {staff["name"]: staff["id"] for staff in all_staff if staff.get("is_active")}
+
+        app.warnings = [w for w in app.warnings if not (w.period_id in target_ids and w.kind == "sync")]
+
+        total_added = 0
+        total_warnings = 0
+        for period in targets:
+            result = sync_period(period, sheets_svc, staff_map)
+            total_added += result.added
+            total_warnings += len(result.warnings)
+            for warning in result.warnings:
+                app.warnings.append(AppWarning(period_id=period["id"], message=warning, kind="sync"))
+
+        summary = f"自動同期完了: {total_added}件追加"
+        if total_warnings:
+            summary += f"、{total_warnings}件警告"
+        logger.info("Auto sync completed: added=%d warnings=%d", total_added, total_warnings)
+        app.post_to_ui(lambda: app.status_bar.set_timed_sync_message(summary))
+    except Exception as e:
+        logger.error("Auto sync failed: %s", e, exc_info=True)
+        message = f"自動同期に失敗しました: {e}"
+        app.post_to_ui(lambda: app.status_bar.set_timed_sync_message(message))
 
 
 def main() -> None:
