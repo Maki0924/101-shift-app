@@ -51,22 +51,27 @@ def _run_auto_sync(app) -> None:
         all_staff = staff_repo.get_all()
         staff_map = {staff["name"]: staff["id"] for staff in all_staff if staff.get("is_active")}
 
-        app.warnings = [w for w in app.warnings if not (w.period_id in target_ids and w.kind == "sync")]
-
         total_added = 0
         total_warnings = 0
+        new_warnings: list[AppWarning] = []
         for period in targets:
             result = sync_period(period, sheets_svc, staff_map)
             total_added += result.added
             total_warnings += len(result.warnings)
             for warning in result.warnings:
-                app.warnings.append(AppWarning(period_id=period["id"], message=warning, kind="sync"))
+                new_warnings.append(AppWarning(period_id=period["id"], message=warning, kind="sync"))
 
         summary = f"自動同期完了: {total_added}件追加"
         if total_warnings:
             summary += f"、{total_warnings}件警告"
         logger.info("Auto sync completed: added=%d warnings=%d", total_added, total_warnings)
-        app.post_to_ui(lambda: app.status_bar.set_timed_sync_message(summary))
+
+        def _apply_sync_results() -> None:
+            app.warnings = [w for w in app.warnings if not (w.period_id in target_ids and w.kind == "sync")]
+            app.warnings.extend(new_warnings)
+            app.status_bar.set_timed_sync_message(summary)
+
+        app.post_to_ui(_apply_sync_results)
     except Exception as e:
         logger.error("Auto sync failed: %s", e, exc_info=True)
         message = f"自動同期に失敗しました: {e}"

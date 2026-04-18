@@ -256,13 +256,13 @@ class TestStartupFlow:
 
         main_mod._run_auto_sync(app)
 
-        assert [w.kind for w in app.warnings] == ["form_update", "sync"]
-        assert app.warnings[1].message == "警告A"
         assert len(posted) == 2
 
         for callback in posted:
             callback()
 
+        assert [w.kind for w in app.warnings] == ["form_update", "sync"]
+        assert app.warnings[1].message == "警告A"
         app.status_bar.set_sync_message.assert_called_once_with("自動同期中…")
         app.status_bar.set_timed_sync_message.assert_called_once_with("自動同期完了: 3件追加、1件警告")
 
