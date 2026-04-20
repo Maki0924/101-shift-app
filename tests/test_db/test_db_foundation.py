@@ -1,6 +1,7 @@
 """DB基盤テスト: 初期化・foreign_keys・スキーマ・マイグレーション・起動フロー"""
 
 import sqlite3
+from unittest import mock
 
 import pytest
 
@@ -8,6 +9,7 @@ from src.db import connection as conn_module
 from src.db.connection import close_connection, get_connection, init_connection, transaction
 from src.db.init_db import init_db
 from src.db.migrations.migration_runner import CURRENT_SCHEMA_VERSION, MigrationError, run_migrations
+from src.sheets.sync import SyncResult
 
 
 @pytest.fixture(autouse=True)
@@ -69,14 +71,19 @@ class TestInitDb:
         init_connection()
         init_db()
         conn = get_connection()
-        tables = {
-            row["name"]
-            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        }
+        tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
         expected = {
-            "periods", "staff", "submissions", "submission_day_entries",
-            "wish_shifts", "edited_shifts", "manager_memos", "cell_marks",
-            "custom_day_rules", "app_settings", "period_print_settings",
+            "periods",
+            "staff",
+            "submissions",
+            "submission_day_entries",
+            "wish_shifts",
+            "edited_shifts",
+            "manager_memos",
+            "cell_marks",
+            "custom_day_rules",
+            "app_settings",
+            "period_print_settings",
         }
         assert expected.issubset(tables)
 
@@ -149,6 +156,7 @@ class TestMigrationRunner:
     def test_missing_migration_script_raises(self, monkeypatch):
         """マイグレーションスクリプトが未登録の場合はエラー"""
         import src.db.migrations.migration_runner as runner
+
         monkeypatch.setattr(runner, "_MIGRATION_SCRIPTS", {})
         monkeypatch.setattr(runner, "CURRENT_SCHEMA_VERSION", CURRENT_SCHEMA_VERSION + 1)
 
@@ -180,16 +188,19 @@ class TestStartupFlow:
         monkeypatch.setattr(backup_mod, "_BACKUP_DIR", tmp_path / "backup")
 
         # Tkinter / UI 部分をモックアウト（UI起動はこのテストのスコープ外）
-        import unittest.mock as mock
         import main as main_mod
+
         dummy_app = mock.MagicMock()
-        with mock.patch("main.App", return_value=dummy_app), \
-             mock.patch("main.threading.Thread"), \
-             mock.patch("main.check_credentials", return_value=mock.MagicMock(available=False)):
+        with (
+            mock.patch("main.App", return_value=dummy_app),
+            mock.patch("main.threading.Thread"),
+            mock.patch("main.check_credentials", return_value=mock.MagicMock(available=False)),
+        ):
             main_mod.main()
 
         # main() 完了後に DB が存在し、app_settings が投入されていることを確認
         import sqlite3
+
         conn = sqlite3.connect(db_file)
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT schema_version FROM app_settings WHERE id = 1").fetchone()
@@ -200,3 +211,82 @@ class TestStartupFlow:
 
         # グローバル接続状態をクリーンアップ
         monkeypatch.setattr(conn_mod, "_connection", None)
+
+    def test_auto_sync_syncs_active_periods(self, monkeypatch):
+        """自動同期は collecting / editing の全期間を処理し、同期警告を置き換える。"""
+        import main as main_mod
+
+        app = mock.MagicMock()
+        app.warnings = [
+            main_mod.AppWarning(period_id=1, message="古い同期警告", kind="sync"),
+            main_mod.AppWarning(period_id=1, message="別種別警告", kind="form_update"),
+        ]
+
+        collecting = {"id": 1, "name": "募集中"}
+        editing = {"id": 2, "name": "編集中"}
+
+        posted = []
+        app.post_to_ui.side_effect = posted.append
+
+        monkeypatch.setattr(
+            main_mod.settings_repo,
+            "get",
+            lambda: {"credentials_filename": "credentials.json"},
+        )
+        monkeypatch.setattr(main_mod.auth, "load_credentials", lambda _: object())
+        monkeypatch.setattr(main_mod.client, "build_sheets", lambda _: object())
+        monkeypatch.setattr(
+            main_mod.period_repo,
+            "get_by_status",
+            lambda status: [collecting] if status == "collecting" else ([editing] if status == "editing" else []),
+        )
+        monkeypatch.setattr(
+            main_mod.staff_repo,
+            "get_all",
+            lambda: [{"id": 10, "name": "山田", "is_active": 1}],
+        )
+
+        def fake_sync_period(period, _svc, staff_map):
+            assert staff_map == {"山田": 10}
+            if period["id"] == 1:
+                return SyncResult(period_id=1, added=2, warnings=["警告A"])
+            return SyncResult(period_id=2, added=1, warnings=[])
+
+        monkeypatch.setattr(main_mod, "sync_period", fake_sync_period)
+
+        main_mod._run_auto_sync(app)
+
+        assert len(posted) == 2
+
+        for callback in posted:
+            callback()
+
+        assert [w.kind for w in app.warnings] == ["form_update", "sync"]
+        assert app.warnings[1].message == "警告A"
+        app.status_bar.set_sync_message.assert_called_once_with("自動同期中…")
+        app.status_bar.set_timed_sync_message.assert_called_once_with("自動同期完了: 3件追加、1件警告")
+
+    def test_auto_sync_skips_when_credentials_unavailable(self, monkeypatch):
+        """credentials がない場合、自動同期は失敗扱いにせず静かにスキップする。"""
+        import main as main_mod
+
+        app = mock.MagicMock()
+        app.warnings = []
+        posted = []
+        app.post_to_ui.side_effect = posted.append
+
+        monkeypatch.setattr(
+            main_mod.settings_repo,
+            "get",
+            lambda: {"credentials_filename": "credentials.json"},
+        )
+        monkeypatch.setattr(main_mod.auth, "load_credentials", lambda _: None)
+
+        main_mod._run_auto_sync(app)
+
+        assert len(posted) == 2
+        for callback in posted:
+            callback()
+
+        app.status_bar.set_sync_message.assert_any_call("自動同期中…")
+        app.status_bar.set_sync_message.assert_any_call("")
