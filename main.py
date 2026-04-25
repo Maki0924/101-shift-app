@@ -31,7 +31,13 @@ from src.utils.paths import APP_DIR
 def _run_auto_sync(app) -> None:
     """起動時自動同期をバックグラウンドで実行する。"""
     logger = get_logger()
-    app.post_to_ui(lambda: app.status_bar.set_sync_message("自動同期中…"))
+
+    def _show_syncing() -> None:
+        if app.is_shutting_down():
+            return
+        app.status_bar.set_sync_message("自動同期中…")
+
+    app.post_to_ui(_show_syncing)
     try:
         app_settings = settings_repo.get()
         creds_filename = (
@@ -42,7 +48,13 @@ def _run_auto_sync(app) -> None:
         creds = auth.load_credentials(APP_DIR / creds_filename)
         if creds is None:
             logger.info("Auto sync skipped: credentials unavailable")
-            app.post_to_ui(lambda: app.status_bar.set_sync_message(""))
+
+            def _clear_message() -> None:
+                if app.is_shutting_down():
+                    return
+                app.status_bar.set_sync_message("")
+
+            app.post_to_ui(_clear_message)
             return
 
         sheets_svc = client.build_sheets(creds)
