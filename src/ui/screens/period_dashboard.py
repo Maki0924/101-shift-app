@@ -232,7 +232,13 @@ class PeriodDashboardScreen(ttk.Frame):
             creds = auth.load_credentials(APP_DIR / creds_filename)
             if creds is None:
                 msg = f"{creds_filename} が見つかりません。"
-                self.app.post_to_ui(lambda: self._on_sync_error(msg))
+
+                def _on_creds_error() -> None:
+                    if self.app.is_shutting_down():
+                        return
+                    self._on_sync_error(msg)
+
+                self.app.post_to_ui(_on_creds_error)
                 return
 
             sheets_svc = client.build_sheets(creds)
@@ -241,29 +247,43 @@ class PeriodDashboardScreen(ttk.Frame):
             targets = period_repo.get_by_status("collecting") + period_repo.get_by_status("editing")
             all_staff = staff_repo.get_all()
             staff_map = {s["name"]: s["id"] for s in all_staff if s.get("is_active")}
-
-            # 同期由来の警告のみクリア（フォーム更新失敗など他種別は残す）
             target_ids = {p["id"] for p in targets}
-            self.app.warnings = [w for w in self.app.warnings if not (w.period_id in target_ids and w.kind == "sync")]
 
             total_added = 0
-            warnings = []
+            new_warnings: list[AppWarning] = []
             for period in targets:
+                if self.app.is_shutting_down():
+                    return
                 result = sync_period(period, sheets_svc, staff_map)
                 total_added += result.added
                 for w in result.warnings:
-                    warnings.append(f"[{period['name']}] {w}")
-                    self.app.warnings.append(AppWarning(period_id=period["id"], message=w, kind="sync"))
+                    new_warnings.append(AppWarning(period_id=period["id"], message=w, kind="sync"))
 
             summary = f"同期完了: {total_added}件追加"
-            if warnings:
-                summary += f"、{len(warnings)}件警告"
-            self.app.post_to_ui(lambda: self._on_sync_done(summary))
+            if new_warnings:
+                summary += f"、{len(new_warnings)}件警告"
+
+            def _apply_sync() -> None:
+                if self.app.is_shutting_down():
+                    return
+                self.app.warnings = [
+                    w for w in self.app.warnings if not (w.period_id in target_ids and w.kind == "sync")
+                ]
+                self.app.warnings.extend(new_warnings)
+                self._on_sync_done(summary)
+
+            self.app.post_to_ui(_apply_sync)
 
         except Exception as e:
             get_logger().error("手動同期に失敗: %s", e, exc_info=True)
             msg = str(e)
-            self.app.post_to_ui(lambda: self._on_sync_error(msg))
+
+            def _on_error() -> None:
+                if self.app.is_shutting_down():
+                    return
+                self._on_sync_error(msg)
+
+            self.app.post_to_ui(_on_error)
 
     def _on_sync_done(self, summary: str) -> None:
         if not self.winfo_exists():
@@ -311,6 +331,8 @@ class PeriodDashboardScreen(ttk.Frame):
 
     def _form_worker(self) -> None:
         """フォーム作成処理（ワーカースレッド）。UI 操作は post_to_ui 経由のみ。"""
+        if self.app.is_shutting_down():
+            return
         try:
             # credentials ロード
             app_settings = settings_repo.get()
@@ -322,7 +344,13 @@ class PeriodDashboardScreen(ttk.Frame):
             creds = auth.load_credentials(APP_DIR / creds_filename)
             if creds is None:
                 msg = f"{creds_filename} が見つかりません。\nexe と同じフォルダに配置してください。"
-                self.app.post_to_ui(lambda: self._on_form_error(msg))
+
+                def _on_creds_error() -> None:
+                    if self.app.is_shutting_down():
+                        return
+                    self._on_form_error(msg)
+
+                self.app.post_to_ui(_on_creds_error)
                 return
 
             # API サービス構築
@@ -337,12 +365,23 @@ class PeriodDashboardScreen(ttk.Frame):
             # フォーム作成 & DB 登録
             form_builder_mod.create_and_register(self._period_id, staff_names, forms_svc, sheets_svc, drive_svc)
 
-            self.app.post_to_ui(self._on_form_done)
+            def _on_done() -> None:
+                if self.app.is_shutting_down():
+                    return
+                self._on_form_done()
+
+            self.app.post_to_ui(_on_done)
 
         except Exception as e:
             get_logger().error("フォーム自動生成に失敗: %s", e, exc_info=True)
             msg = str(e)
-            self.app.post_to_ui(lambda: self._on_form_error(msg))
+
+            def _on_error() -> None:
+                if self.app.is_shutting_down():
+                    return
+                self._on_form_error(msg)
+
+            self.app.post_to_ui(_on_error)
 
     def _on_form_done(self) -> None:
         """フォーム作成成功時の UI 更新（メインスレッド）。"""

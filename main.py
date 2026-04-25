@@ -123,7 +123,7 @@ def main() -> None:
         app.show_screen(StartScreen)
 
         # スタート画面表示後にバックグラウンドで自動同期
-        auto_sync_thread = threading.Thread(target=_run_auto_sync, args=(app,))
+        auto_sync_thread = threading.Thread(target=_run_auto_sync, args=(app,), daemon=True)
         auto_sync_thread.start()
 
         app.mainloop()
@@ -134,7 +134,9 @@ def main() -> None:
     finally:
         auto_sync_thread = locals().get("auto_sync_thread")
         if auto_sync_thread is not None and auto_sync_thread.is_alive():
-            auto_sync_thread.join()
+            auto_sync_thread.join(timeout=30)
+            if auto_sync_thread.is_alive():
+                logger.warning("Auto sync thread did not finish within timeout; proceeding with shutdown")
         close_connection()
         release_lock()
 
