@@ -1,6 +1,7 @@
 """アプリケーションルートウィンドウ・画面切り替え機構"""
 
 import queue
+import threading
 import tkinter as tk
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,6 +54,7 @@ class App(tk.Tk):
 
         # 警告リスト（アプリ全体で1つ）。period_id で期間別フィルタリング可能
         self.warnings: list[AppWarning] = []
+        self._shutdown_event = threading.Event()
 
         # メインコンテナ（画面を配置する領域）
         self._container = ttk.Frame(self)
@@ -67,6 +69,7 @@ class App(tk.Tk):
         # スレッドセーフUI更新用キュー（ワーカースレッドから直接 after() を呼ばないこと）
         self._ui_queue: queue.SimpleQueue[Callable[[], None]] = queue.SimpleQueue()
         self.after(_UI_QUEUE_POLL_MS, self._poll_ui_queue)
+        self.protocol("WM_DELETE_WINDOW", self.request_shutdown)
 
     def _poll_ui_queue(self) -> None:
         """ワーカースレッドからのUI更新要求をメインスレッドで処理する。"""
@@ -88,6 +91,26 @@ class App(tk.Tk):
         キューに積まれた関数は約100ms以内にメインスレッドで実行される。
         """
         self._ui_queue.put(fn)
+
+    def request_shutdown(self) -> None:
+        """終了要求を記録し、ルートウィンドウを閉じる。"""
+        self._shutdown_event.set()
+        if self.winfo_exists():
+            self.destroy()
+
+    def is_shutting_down(self) -> bool:
+        """終了処理が開始済みなら True を返す。"""
+        return self._shutdown_event.is_set()
+
+    def refresh_current_screen_data(self) -> None:
+        """現在画面がデータ更新通知に対応していれば再読込する。"""
+        screen = self._current_screen
+        if screen is None or not hasattr(screen, "refresh_after_data_change"):
+            return
+        try:
+            screen.refresh_after_data_change()
+        except Exception as e:
+            get_logger().error("current screen refresh failed: %s", e, exc_info=True)
 
     def show_screen(self, screen_cls: type[ttk.Frame], **kwargs) -> ttk.Frame:
         """指定した画面クラスのインスタンスを生成して表示する。

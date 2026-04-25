@@ -159,6 +159,11 @@ class PeriodDashboardScreen(ttk.Frame):
 
         self._update_buttons(period["status"])
 
+    def refresh_after_data_change(self) -> None:
+        """外部更新後に現在の期間情報を再読込する。"""
+        if self.winfo_exists():
+            self._load()
+
     def _update_buttons(self, status: str) -> None:
         """ステータスに応じてボタンの表示・disabled 状態を更新する。"""
         is_archived = status == "archived"

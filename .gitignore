@@ -25,12 +25,11 @@ Thumbs.db
 backup/
 logs/
 credentials.json
+shift-app-*.json
 shift_app.lock
 .env
 
 docs/
-
-shift-app-492411-fa1f07fe3ba4.json
 
 # Tools
 .claude/

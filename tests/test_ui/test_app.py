@@ -12,6 +12,8 @@ class TestPollUiQueue:
         app = App.__new__(App)
         app._ui_queue = queue.SimpleQueue()
         app.after = mock.Mock()
+        app._shutdown_event = mock.Mock()
+        app._current_screen = None
         return app
 
     def test_executes_queued_callbacks(self):
@@ -48,3 +50,28 @@ class TestPollUiQueue:
         app._poll_ui_queue()
 
         app.after.assert_called_once_with(100, app._poll_ui_queue)
+
+
+class TestCurrentScreenRefresh:
+    def test_refresh_current_screen_data_calls_hook_when_available(self):
+        app = App.__new__(App)
+        app._current_screen = mock.Mock()
+
+        app.refresh_current_screen_data()
+
+        app._current_screen.refresh_after_data_change.assert_called_once()
+
+    def test_refresh_current_screen_data_ignores_unsupported_screen(self):
+        app = App.__new__(App)
+        app._current_screen = object()
+
+        app.refresh_current_screen_data()
+
+
+class TestShutdownState:
+    def test_is_shutting_down_reflects_event_state(self):
+        app = App.__new__(App)
+        app._shutdown_event = mock.Mock()
+        app._shutdown_event.is_set.return_value = True
+
+        assert app.is_shutting_down() is True
