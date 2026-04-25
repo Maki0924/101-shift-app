@@ -7,6 +7,7 @@
 import datetime
 import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from src.db.repositories import submission_repo
@@ -20,10 +21,10 @@ _NOTE_MAX_LEN = 150
 
 # モードB変換テーブル: (午前不可, 午後不可) → (start_time, end_time)
 _MODE_B_TABLE: dict[tuple[bool, bool], tuple[float | None, float | None]] = {
-    (False, False): (11.0, 22.0),   # 両方チェックなし → 終日
-    (True,  False): (18.0, 22.0),   # 午前不可のみ → 午後のみ入れる
-    (False, True):  (11.0, 16.0),   # 午後不可のみ → 午前のみ入れる
-    (True,  True):  (None, None),   # 両方不可 → 勤務不可
+    (False, False): (11.0, 22.0),  # 両方チェックなし → 終日
+    (True, False): (18.0, 22.0),  # 午前不可のみ → 午後のみ入れる
+    (False, True): (11.0, 16.0),  # 午後不可のみ → 午前のみ入れる
+    (True, True): (None, None),  # 両方不可 → 勤務不可
 }
 
 # タイムスタンプ解析フォーマット候補
@@ -38,6 +39,7 @@ _TS_FORMATS = [
 @dataclass
 class SyncResult:
     """1期間の同期結果。"""
+
     period_id: int
     added: int = 0
     skipped: int = 0
@@ -45,6 +47,7 @@ class SyncResult:
 
 
 # ── 内部ヘルパー ──────────────────────────────────────────────────────────────
+
 
 def _norm_str(value: str | None) -> str:
     """文字列を正規化する（トリム・改行統一・NULL変換）。"""
@@ -207,8 +210,7 @@ def _process_row(
 
     weekly_pref_raw = _cell(row, cm.weekly_pref_idx)
     weekly_pref_min, weekly_pref_max = parse_weekly_pref(weekly_pref_raw)
-    if (weekly_pref_raw and weekly_pref_raw.strip()
-            and weekly_pref_min is None and weekly_pref_max is None):
+    if weekly_pref_raw and weekly_pref_raw.strip() and weekly_pref_min is None and weekly_pref_max is None:
         result.warnings.append(f"週何回希望のパース不能: '{weekly_pref_raw}' ({ctx})")
 
     mode_raw = (_cell(row, cm.mode_idx) or "").strip()
@@ -218,19 +220,28 @@ def _process_row(
     date_time_values: list[tuple[str | None, str | None]] = []
     for date_str in all_dates:
         if is_mode_b:
-            date_time_values.append((
-                _cell(row, cm.mode_b_morning.get(date_str)),
-                _cell(row, cm.mode_b_afternoon.get(date_str)),
-            ))
+            date_time_values.append(
+                (
+                    _cell(row, cm.mode_b_morning.get(date_str)),
+                    _cell(row, cm.mode_b_afternoon.get(date_str)),
+                )
+            )
         else:
-            date_time_values.append((
-                _cell(row, cm.mode_a_start.get(date_str)),
-                _cell(row, cm.mode_a_end.get(date_str)),
-            ))
+            date_time_values.append(
+                (
+                    _cell(row, cm.mode_a_start.get(date_str)),
+                    _cell(row, cm.mode_a_end.get(date_str)),
+                )
+            )
 
     key = _generate_key(
-        submitted_at_raw, raw_staff_name, period_id,
-        note_raw, weekly_pref_raw, mode_raw, date_time_values,
+        submitted_at_raw,
+        raw_staff_name,
+        period_id,
+        note_raw,
+        weekly_pref_raw,
+        mode_raw,
+        date_time_values,
     )
 
     if submission_repo.exists_by_key(key):
@@ -270,10 +281,13 @@ def _process_row(
 
 # ── 公開 API ──────────────────────────────────────────────────────────────────
 
+
 def sync_period(
     period: dict,
     sheets_service,
     staff_map: dict[str, int],
+    *,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> SyncResult:
     """1期間のスプレッドシートから回答を同期する。
 
@@ -281,6 +295,7 @@ def sync_period(
         period: periods レコード（id / start_date / end_date / spreadsheet_id を使用）
         sheets_service: Sheets API v4 サービス
         staff_map: raw_staff_name → staff_id のマッピング
+        cancel_check: キャンセル判定コールバック。True を返すと処理を中断する。
 
     Returns:
         SyncResult（追加件数・スキップ件数・警告リスト）
@@ -290,10 +305,18 @@ def sync_period(
     if not spreadsheet_id:
         return result
 
-    response = sheets_service.spreadsheets().values().get(
-        spreadsheetId=spreadsheet_id,
-        range="A:ZZZ",  # 列数が期間長に応じて動的に変わるため広めに指定
-    ).execute()
+    if cancel_check and cancel_check():
+        return result
+
+    response = (
+        sheets_service.spreadsheets()
+        .values()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range="A:ZZZ",  # 列数が期間長に応じて動的に変わるため広めに指定
+        )
+        .execute()
+    )
 
     rows = response.get("values", [])
     if len(rows) < 2:
@@ -309,6 +332,9 @@ def sync_period(
     all_dates = _date_range(period["start_date"], period["end_date"])
 
     for row in rows[1:]:
+        if cancel_check and cancel_check():
+            get_logger().info("sync_period cancelled mid-rows (period %d)", period["id"])
+            break
         try:
             _process_row(row, cm, period, all_dates, staff_map, result)
         except Exception as e:
@@ -317,6 +343,9 @@ def sync_period(
 
     get_logger().info(
         "sync_period done (period %d): added=%d skipped=%d warnings=%d",
-        period["id"], result.added, result.skipped, len(result.warnings),
+        period["id"],
+        result.added,
+        result.skipped,
+        len(result.warnings),
     )
     return result

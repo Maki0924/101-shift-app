@@ -58,7 +58,7 @@ def _run_auto_sync(app) -> None:
             if app.is_shutting_down():
                 logger.info("Auto sync aborted during shutdown")
                 return
-            result = sync_period(period, sheets_svc, staff_map)
+            result = sync_period(period, sheets_svc, staff_map, cancel_check=app.is_shutting_down)
             total_added += result.added
             total_warnings += len(result.warnings)
             for warning in result.warnings:
@@ -137,6 +137,9 @@ def main() -> None:
             auto_sync_thread.join(timeout=30)
             if auto_sync_thread.is_alive():
                 logger.warning("Auto sync thread did not finish within timeout; proceeding with shutdown")
+        app_instance = locals().get("app")
+        if app_instance is not None:
+            app_instance.join_workers()
         close_connection()
         release_lock()
 

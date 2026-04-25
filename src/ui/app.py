@@ -56,6 +56,10 @@ class App(tk.Tk):
         self.warnings: list[AppWarning] = []
         self._shutdown_event = threading.Event()
 
+        # UI トリガーのワーカースレッド管理（close_connection() 前に join するため）
+        self._workers: set[threading.Thread] = set()
+        self._workers_lock = threading.Lock()
+
         # メインコンテナ（画面を配置する領域）
         self._container = ttk.Frame(self)
         self._container.pack(fill="both", expand=True)
@@ -101,6 +105,32 @@ class App(tk.Tk):
     def is_shutting_down(self) -> bool:
         """終了処理が開始済みなら True を返す。"""
         return self._shutdown_event.is_set()
+
+    def start_worker(self, target: Callable[[], None]) -> threading.Thread:
+        """ワーカースレッドを daemon=True で起動し App に登録する。
+
+        登録済みの完了スレッドは起動時に自動除去する。
+        終了時に join_workers() を呼ぶことで close_connection() との競合を防ぐ。
+        """
+        thread = threading.Thread(target=target, daemon=True)
+        with self._workers_lock:
+            self._workers = {t for t in self._workers if t.is_alive()}
+            self._workers.add(thread)
+        thread.start()
+        return thread
+
+    def join_workers(self, timeout_each: float = 5.0) -> None:
+        """全登録ワーカースレッドの終了を待つ。
+
+        各スレッドに timeout_each 秒まで待ち、超過した場合は警告ログを残す。
+        """
+        with self._workers_lock:
+            threads = set(self._workers)
+        for t in threads:
+            if t.is_alive():
+                t.join(timeout=timeout_each)
+                if t.is_alive():
+                    get_logger().warning("Worker thread did not finish within timeout: %s", t.name)
 
     def refresh_current_screen_data(self) -> None:
         """現在画面がデータ更新通知に対応していれば再読込する。"""

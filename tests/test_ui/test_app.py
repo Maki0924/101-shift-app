@@ -1,6 +1,8 @@
 """App._poll_ui_queue のテスト"""
 
 import queue
+import threading
+import time
 from unittest import mock
 
 from src.ui.app import App
@@ -75,3 +77,79 @@ class TestShutdownState:
         app._shutdown_event.is_set.return_value = True
 
         assert app.is_shutting_down() is True
+
+
+class TestWorkerManagement:
+    def _make_app(self):
+        app = App.__new__(App)
+        app._workers = set()
+        app._workers_lock = threading.Lock()
+        return app
+
+    def test_start_worker_runs_target(self):
+        app = self._make_app()
+        done = threading.Event()
+        app.start_worker(done.set)
+        assert done.wait(timeout=2)
+
+    def test_start_worker_registers_thread(self):
+        app = self._make_app()
+        started = threading.Event()
+        blocking = threading.Event()
+
+        def target():
+            started.set()
+            blocking.wait()
+
+        thread = app.start_worker(target)
+        started.wait(timeout=2)
+        try:
+            assert thread in app._workers
+        finally:
+            blocking.set()
+            thread.join(timeout=2)
+
+    def test_start_worker_is_daemon(self):
+        app = self._make_app()
+        done = threading.Event()
+        thread = app.start_worker(done.set)
+        assert thread.daemon is True
+        done.wait(timeout=2)
+
+    def test_join_workers_waits_for_completion(self):
+        app = self._make_app()
+        results = []
+
+        def slow_target():
+            time.sleep(0.05)
+            results.append(1)
+
+        app.start_worker(slow_target)
+        app.join_workers(timeout_each=2.0)
+        assert results == [1]
+
+    def test_join_workers_logs_warning_on_timeout(self):
+        app = self._make_app()
+        blocking = threading.Event()
+
+        def never_finishes():
+            blocking.wait(timeout=10)
+
+        app.start_worker(never_finishes)
+        with mock.patch("src.ui.app.get_logger") as mock_logger:
+            app.join_workers(timeout_each=0.01)
+            mock_logger.return_value.warning.assert_called_once()
+        blocking.set()
+
+    def test_start_worker_prunes_dead_threads(self):
+        app = self._make_app()
+        done = threading.Event()
+
+        dead = app.start_worker(done.set)
+        done.wait(timeout=2)
+        dead.join(timeout=2)
+
+        blocking = threading.Event()
+        app.start_worker(blocking.wait)
+        assert dead not in app._workers
+        blocking.set()
