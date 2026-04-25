@@ -176,11 +176,20 @@ class TestFormUrlOverwriteConfirm:
 # ── 同期警告の種別管理 ────────────────────────────────────────────────────────
 
 
-def _run_sync_worker(screen: PeriodDashboardScreen, sync_result: SyncResult) -> None:
+def _run_sync_worker(
+    screen: PeriodDashboardScreen,
+    sync_result: SyncResult,
+    *,
+    run_callback: bool = True,
+) -> None:
     """_sync_worker を外部依存をすべてモックして実行するヘルパー。
 
-    _sync_worker() 完了後、post_to_ui に積まれたコールバックを UI スレッド相当で実行する。
+    run_callback=True（デフォルト）の場合、_sync_worker() 完了後に
+    post_to_ui に積まれたコールバックを UI スレッド相当で実行する。
     _on_sync_done / _on_sync_error はモック化して UI 呼び出しを抑制する。
+
+    shutdown タイミングを細かく制御したいテストでは run_callback=False を
+    使い、呼び出し側でコールバックを手動実行する。
     """
     pid = screen._period_id
     with (
@@ -199,7 +208,7 @@ def _run_sync_worker(screen: PeriodDashboardScreen, sync_result: SyncResult) -> 
     ):
         screen._sync_worker()
 
-    if screen.app.post_to_ui.called:
+    if run_callback and screen.app.post_to_ui.called:
         cb = screen.app.post_to_ui.call_args[0][0]
         with (
             mock.patch.object(screen, "_on_sync_done"),
@@ -264,22 +273,9 @@ class TestSyncWorkerShutdown:
         original = [AppWarning(period_id=pid, message="既存警告", kind="sync")]
         screen.app.warnings = list(original)
 
+        # run_callback=False でワーカーのみ実行し、コールバックは手動で制御する
         result = SyncResult(period_id=pid, added=1, warnings=[])
-        with (
-            mock.patch(
-                "src.ui.screens.period_dashboard.settings_repo.get",
-                return_value={"credentials_filename": "creds.json"},
-            ),
-            mock.patch("src.ui.screens.period_dashboard.auth.load_credentials", return_value=mock.Mock()),
-            mock.patch("src.ui.screens.period_dashboard.client.build_sheets", return_value=mock.Mock()),
-            mock.patch(
-                "src.ui.screens.period_dashboard.period_repo.get_by_status",
-                side_effect=lambda s: [period_repo.get_by_id(pid)] if s == "collecting" else [],
-            ),
-            mock.patch("src.ui.screens.period_dashboard.staff_repo.get_all", return_value=[]),
-            mock.patch("src.ui.screens.period_dashboard.sync_period", return_value=result),
-        ):
-            screen._sync_worker()
+        _run_sync_worker(screen, result, run_callback=False)
 
         screen.app.is_shutting_down.return_value = True
         if screen.app.post_to_ui.called:
