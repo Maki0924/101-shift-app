@@ -170,6 +170,8 @@ class StaffScreen(ttk.Frame):
 
     def _form_update_worker(self) -> None:
         """フォームプルダウン更新（ワーカースレッド）。"""
+        if self.app.is_shutting_down():
+            return
         try:
             app_settings = settings_repo.get()
             creds_filename = (
@@ -185,16 +187,29 @@ class StaffScreen(ttk.Frame):
             all_staff = staff_repo.get_all()
             staff_names = [s["name"] for s in all_staff if s.get("is_active")]
             failures = form_updater_mod.update_all(staff_names, forms_svc)
-            if failures:
-                for f in failures:
-                    get_logger().warning("フォームプルダウン更新失敗: %s", f)
-                    self.app.warnings.append(
-                        AppWarning(
-                            period_id=f["period_id"],
-                            message=f"フォームプルダウン更新失敗: {f['error']}",
-                            kind="form_update",
-                        )
-                    )
+            for f in failures:
+                get_logger().warning("フォームプルダウン更新失敗: %s", f)
+            new_warnings = [
+                AppWarning(
+                    period_id=f["period_id"],
+                    message=f"フォームプルダウン更新失敗: {f['error']}",
+                    kind="form_update",
+                )
+                for f in failures
+            ]
+
+            def _apply_form_update() -> None:
+                if self.app.is_shutting_down():
+                    return
+                # update_all は全 collecting 期間を対象にまとめて実行するため、
+                # 実行完了時点の最新結果だけを残す（古い form_update 警告は全置換）
+                self.app.warnings = [w for w in self.app.warnings if w.kind != "form_update"]
+                self.app.warnings.extend(new_warnings)
+                if new_warnings:
+                    self.app.status_bar.set_timed_sync_message(f"フォーム更新警告: {len(new_warnings)}件")
+
+            self.app.post_to_ui(_apply_form_update)
+
         except Exception as e:
             get_logger().error("フォームプルダウン更新に失敗: %s", e, exc_info=True)
             err_msg = f"フォーム自動更新失敗: {e}"
