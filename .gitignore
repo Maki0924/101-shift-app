@@ -30,8 +30,6 @@ shift_app.lock
 
 docs/
 
-shift-app-492411-fa1f07fe3ba4.json
-
 # Tools
 .claude/
 .serena/
