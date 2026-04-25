@@ -55,6 +55,9 @@ def _run_auto_sync(app) -> None:
         total_warnings = 0
         new_warnings: list[AppWarning] = []
         for period in targets:
+            if app.is_shutting_down():
+                logger.info("Auto sync aborted during shutdown")
+                return
             result = sync_period(period, sheets_svc, staff_map)
             total_added += result.added
             total_warnings += len(result.warnings)
@@ -67,15 +70,18 @@ def _run_auto_sync(app) -> None:
         logger.info("Auto sync completed: added=%d warnings=%d", total_added, total_warnings)
 
         def _apply_sync_results() -> None:
+            if app.is_shutting_down():
+                return
             app.warnings = [w for w in app.warnings if not (w.period_id in target_ids and w.kind == "sync")]
             app.warnings.extend(new_warnings)
             app.status_bar.set_timed_sync_message(summary)
+            app.refresh_current_screen_data()
 
         app.post_to_ui(_apply_sync_results)
     except Exception as e:
         logger.error("Auto sync failed: %s", e, exc_info=True)
         message = f"自動同期に失敗しました: {e}"
-        app.post_to_ui(lambda: app.status_bar.set_timed_sync_message(message))
+        app.post_to_ui(lambda: None if app.is_shutting_down() else app.status_bar.set_timed_sync_message(message))
 
 
 def main() -> None:
@@ -111,7 +117,8 @@ def main() -> None:
         app.show_screen(StartScreen)
 
         # スタート画面表示後にバックグラウンドで自動同期
-        threading.Thread(target=_run_auto_sync, args=(app,), daemon=True).start()
+        auto_sync_thread = threading.Thread(target=_run_auto_sync, args=(app,))
+        auto_sync_thread.start()
 
         app.mainloop()
 
@@ -119,6 +126,9 @@ def main() -> None:
         logger.error("Fatal error during startup: %s", e, exc_info=True)
         raise
     finally:
+        auto_sync_thread = locals().get("auto_sync_thread")
+        if auto_sync_thread is not None and auto_sync_thread.is_alive():
+            auto_sync_thread.join()
         close_connection()
         release_lock()
 

@@ -221,6 +221,7 @@ class TestStartupFlow:
             main_mod.AppWarning(period_id=1, message="古い同期警告", kind="sync"),
             main_mod.AppWarning(period_id=1, message="別種別警告", kind="form_update"),
         ]
+        app.is_shutting_down.return_value = False
 
         collecting = {"id": 1, "name": "募集中"}
         editing = {"id": 2, "name": "編集中"}
@@ -265,6 +266,7 @@ class TestStartupFlow:
         assert app.warnings[1].message == "警告A"
         app.status_bar.set_sync_message.assert_called_once_with("自動同期中…")
         app.status_bar.set_timed_sync_message.assert_called_once_with("自動同期完了: 3件追加、1件警告")
+        app.refresh_current_screen_data.assert_called_once()
 
     def test_auto_sync_skips_when_credentials_unavailable(self, monkeypatch):
         """credentials がない場合、自動同期は失敗扱いにせず静かにスキップする。"""
@@ -272,6 +274,7 @@ class TestStartupFlow:
 
         app = mock.MagicMock()
         app.warnings = []
+        app.is_shutting_down.return_value = False
         posted = []
         app.post_to_ui.side_effect = posted.append
 
@@ -290,3 +293,33 @@ class TestStartupFlow:
 
         app.status_bar.set_sync_message.assert_any_call("自動同期中…")
         app.status_bar.set_sync_message.assert_any_call("")
+
+    def test_auto_sync_stops_during_shutdown(self, monkeypatch):
+        """終了要求が入ったら残り期間の同期と UI 更新を打ち切る。"""
+        import main as main_mod
+
+        app = mock.MagicMock()
+        app.warnings = []
+        app.is_shutting_down.side_effect = [False, True]
+
+        monkeypatch.setattr(
+            main_mod.settings_repo,
+            "get",
+            lambda: {"credentials_filename": "credentials.json"},
+        )
+        monkeypatch.setattr(main_mod.auth, "load_credentials", lambda _: object())
+        monkeypatch.setattr(main_mod.client, "build_sheets", lambda _: object())
+        monkeypatch.setattr(
+            main_mod.period_repo,
+            "get_by_status",
+            lambda status: [{"id": 1, "name": "募集中"}] if status == "collecting" else [{"id": 2, "name": "編集中"}],
+        )
+        monkeypatch.setattr(main_mod.staff_repo, "get_all", lambda: [])
+
+        sync_period = mock.Mock(return_value=SyncResult(period_id=1, added=1, warnings=[]))
+        monkeypatch.setattr(main_mod, "sync_period", sync_period)
+
+        main_mod._run_auto_sync(app)
+
+        sync_period.assert_called_once()
+        app.refresh_current_screen_data.assert_not_called()

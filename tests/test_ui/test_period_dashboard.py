@@ -229,3 +229,14 @@ class TestSyncWarningKind:
 
         assert any(w.kind == "form_update" for w in screen.app.warnings)
         assert not any(w.kind == "sync" for w in screen.app.warnings)
+
+
+class TestRefreshAfterDataChange:
+    def test_refresh_after_data_change_calls_load_when_alive(self):
+        screen = _make_screen()
+        screen.winfo_exists = mock.Mock(return_value=True)
+
+        with mock.patch.object(screen, "_load") as mock_load:
+            screen.refresh_after_data_change()
+
+        mock_load.assert_called_once()
