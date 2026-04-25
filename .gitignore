@@ -25,6 +25,7 @@ Thumbs.db
 backup/
 logs/
 credentials.json
+shift-app-*.json
 shift_app.lock
 .env
 

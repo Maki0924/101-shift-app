@@ -81,7 +81,13 @@ def _run_auto_sync(app) -> None:
     except Exception as e:
         logger.error("Auto sync failed: %s", e, exc_info=True)
         message = f"自動同期に失敗しました: {e}"
-        app.post_to_ui(lambda: None if app.is_shutting_down() else app.status_bar.set_timed_sync_message(message))
+
+        def _on_error() -> None:
+            if app.is_shutting_down():
+                return
+            app.status_bar.set_timed_sync_message(message)
+
+        app.post_to_ui(_on_error)
 
 
 def main() -> None:
