@@ -247,7 +247,7 @@ class TestStartupFlow:
             lambda: [{"id": 10, "name": "山田", "is_active": 1}],
         )
 
-        def fake_sync_period(period, _svc, staff_map):
+        def fake_sync_period(period, _svc, staff_map, *, cancel_check=None):
             assert staff_map == {"山田": 10}
             if period["id"] == 1:
                 return SyncResult(period_id=1, added=2, warnings=["警告A"])

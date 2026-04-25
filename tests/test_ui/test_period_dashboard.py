@@ -150,27 +150,22 @@ class TestFormUrlOverwriteConfirm:
 
         with (
             mock.patch("src.ui.screens.period_dashboard.ask_confirm", return_value=False),
-            mock.patch("threading.Thread") as mock_thread,
             mock.patch.object(screen, "winfo_exists", return_value=True),
         ):
             screen._on_create_form()
 
-        mock_thread.assert_not_called()
+        screen.app.start_worker.assert_not_called()
 
     def test_no_confirm_when_no_form_url(self):
         """form_url がない場合は確認ダイアログなしで直接スレッド起動。"""
         screen = _make_screen(form_url=None)
         screen._period["form_url"] = None
 
-        with (
-            mock.patch("src.ui.screens.period_dashboard.ask_confirm") as mock_confirm,
-            mock.patch("threading.Thread") as mock_thread,
-        ):
-            mock_thread.return_value = mock.Mock()
+        with mock.patch("src.ui.screens.period_dashboard.ask_confirm") as mock_confirm:
             screen._on_create_form()
 
         mock_confirm.assert_not_called()
-        mock_thread.assert_called_once()
+        screen.app.start_worker.assert_called_once()
 
 
 # ── 同期警告の種別管理 ────────────────────────────────────────────────────────

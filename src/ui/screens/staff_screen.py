@@ -1,7 +1,6 @@
 """スタッフマスター管理画面（コミット15）"""
 
 import math
-import threading
 import tkinter as tk
 from collections.abc import Callable
 from tkinter import ttk
@@ -166,7 +165,7 @@ class StaffScreen(ttk.Frame):
         """
         if not self.app.creds_available:
             return
-        threading.Thread(target=self._form_update_worker, daemon=True).start()
+        self.app.start_worker(self._form_update_worker)
 
     def _form_update_worker(self) -> None:
         """フォームプルダウン更新（ワーカースレッド）。"""

@@ -3,7 +3,6 @@
 期間情報サマリー・進捗カード・ステータス遷移・手動同期・警告インジケーターを提供する。
 """
 
-import threading
 import tkinter as tk
 from tkinter import ttk
 
@@ -217,7 +216,7 @@ class PeriodDashboardScreen(ttk.Frame):
         """手動Sheets同期: collecting / editing の全期間をバックグラウンドで順次同期する。"""
         self._sync_btn.configure(state="disabled")
         self.app.status_bar.set_sync_message("同期中…")
-        threading.Thread(target=self._sync_worker, daemon=True).start()
+        self.app.start_worker(self._sync_worker)
 
     def _sync_worker(self) -> None:
         """同期処理（ワーカースレッド）。UI 操作は post_to_ui 経由のみ。"""
@@ -254,7 +253,7 @@ class PeriodDashboardScreen(ttk.Frame):
             for period in targets:
                 if self.app.is_shutting_down():
                     return
-                result = sync_period(period, sheets_svc, staff_map)
+                result = sync_period(period, sheets_svc, staff_map, cancel_check=self.app.is_shutting_down)
                 total_added += result.added
                 for w in result.warnings:
                     new_warnings.append(AppWarning(period_id=period["id"], message=w, kind="sync"))
@@ -327,7 +326,7 @@ class PeriodDashboardScreen(ttk.Frame):
 
         self._form_btn.configure(state="disabled")
         self.app.status_bar.set_sync_message("フォーム作成中…")
-        threading.Thread(target=self._form_worker, daemon=True).start()
+        self.app.start_worker(self._form_worker)
 
     def _form_worker(self) -> None:
         """フォーム作成処理（ワーカースレッド）。UI 操作は post_to_ui 経由のみ。"""

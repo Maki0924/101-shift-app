@@ -3,6 +3,7 @@
 Sheets API を呼び出さない部分（column_mapper / パース / ハッシュ生成）をテストする。
 """
 
+from unittest import mock
 
 from src.sheets.column_mapper import parse_header, resolve_date
 from src.sheets.sync import (
@@ -12,9 +13,105 @@ from src.sheets.sync import (
     _parse_mode_a,
     _parse_mode_b,
     _parse_time_str,
+    sync_period,
 )
 
+# ── sync_period cancel_check ──────────────────────────────────────────────────
+
+
+class TestSyncPeriodCancelCheck:
+    _PERIOD = {
+        "id": 1,
+        "start_date": "2026-10-21",
+        "end_date": "2026-10-21",
+        "spreadsheet_id": "sheet123",
+    }
+
+    def _make_sheets_svc(self, rows=None):
+        if rows is None:
+            rows = [
+                ["タイムスタンプ", "スタッフ名"],
+                ["2026/10/01 10:00:00", "田中"],
+                ["2026/10/01 11:00:00", "鈴木"],
+            ]
+        svc = mock.MagicMock()
+        svc.spreadsheets().values().get().execute.return_value = {"values": rows}
+        return svc
+
+    def test_cancel_before_api_call_skips_api(self):
+        svc = self._make_sheets_svc()
+        result = sync_period(
+            self._PERIOD,
+            svc,
+            {},
+            cancel_check=lambda: True,
+        )
+        svc.spreadsheets().values().get().execute.assert_not_called()
+        assert result.added == 0
+
+    def test_cancel_between_rows_stops_processing(self):
+        svc = self._make_sheets_svc()
+        call_count = 0
+
+        def cancel_after_first():
+            nonlocal call_count
+            call_count += 1
+            return call_count > 1
+
+        with (
+            mock.patch("src.sheets.sync.submission_repo") as mock_repo,
+            mock.patch("src.sheets.sync.col_mod.parse_header") as mock_header,
+        ):
+            mock_repo.exists_by_key.return_value = False
+            cm = mock.MagicMock()
+            cm.unknown_cols = []
+            cm.mode_b_morning = {}
+            cm.mode_b_afternoon = {}
+            cm.mode_a_start = {"2026-10-21": None}
+            cm.mode_a_end = {"2026-10-21": None}
+            cm.submitted_at_idx = 0
+            cm.staff_name_idx = 1
+            cm.note_idx = None
+            cm.weekly_pref_idx = None
+            cm.mode_idx = None
+            mock_header.return_value = cm
+
+            sync_period(
+                self._PERIOD,
+                svc,
+                {},
+                cancel_check=cancel_after_first,
+            )
+
+        assert mock_repo.create_with_day_entries.call_count == 0
+
+    def test_no_cancel_check_processes_all_rows(self):
+        svc = self._make_sheets_svc()
+        with (
+            mock.patch("src.sheets.sync.submission_repo") as mock_repo,
+            mock.patch("src.sheets.sync.col_mod.parse_header") as mock_header,
+        ):
+            mock_repo.exists_by_key.return_value = True
+            cm = mock.MagicMock()
+            cm.unknown_cols = []
+            cm.mode_b_morning = {}
+            cm.mode_b_afternoon = {}
+            cm.mode_a_start = {"2026-10-21": None}
+            cm.mode_a_end = {"2026-10-21": None}
+            cm.submitted_at_idx = 0
+            cm.staff_name_idx = 1
+            cm.note_idx = None
+            cm.weekly_pref_idx = None
+            cm.mode_idx = None
+            mock_header.return_value = cm
+
+            result = sync_period(self._PERIOD, svc, {})
+
+        assert result.skipped == 2
+
+
 # ── resolve_date ──────────────────────────────────────────────────────────────
+
 
 class TestResolveDate:
     def test_normal(self):
@@ -44,6 +141,7 @@ class TestResolveDate:
 
 
 # ── parse_header ──────────────────────────────────────────────────────────────
+
 
 class TestParseHeader:
     START, END = "2026-10-21", "2026-11-20"
@@ -89,6 +187,7 @@ class TestParseHeader:
 
 # ── _parse_time_str ───────────────────────────────────────────────────────────
 
+
 class TestParseTimeStr:
     def test_hour_zero_minute(self):
         assert _parse_time_str("09:00") == 9.0
@@ -119,6 +218,7 @@ class TestParseTimeStr:
 
 # ── _parse_mode_b ─────────────────────────────────────────────────────────────
 
+
 class TestParseModeB:
     def test_neither_checked(self):
         assert _parse_mode_b(None, None) == (11.0, 22.0)
@@ -144,6 +244,7 @@ class TestParseModeB:
 
 
 # ── _generate_key ─────────────────────────────────────────────────────────────
+
 
 class TestGenerateKey:
     _BASE = dict(
@@ -190,6 +291,7 @@ class TestGenerateKey:
 
 
 # ── _parse_mode_a ────────────────────────────────────────────────────────────
+
 
 class TestParseModeA:
     DATE = "2026-10-21"
@@ -250,6 +352,7 @@ class TestParseModeA:
 
 
 # ── _norm_str ─────────────────────────────────────────────────────────────────
+
 
 class TestNormStr:
     def test_none_returns_null_token(self):
