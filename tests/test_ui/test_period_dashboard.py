@@ -62,6 +62,7 @@ def _make_screen(status: str = "editing", creds: bool = True, form_url: str | No
     screen.app = mock.Mock()
     screen.app.creds_available = creds
     screen.app.warnings = []
+    screen.app.is_shutting_down.return_value = False
     return screen
 
 
@@ -176,7 +177,11 @@ class TestFormUrlOverwriteConfirm:
 
 
 def _run_sync_worker(screen: PeriodDashboardScreen, sync_result: SyncResult) -> None:
-    """_sync_worker を外部依存をすべてモックして実行するヘルパー。"""
+    """_sync_worker を外部依存をすべてモックして実行するヘルパー。
+
+    _sync_worker() 完了後、post_to_ui に積まれたコールバックを UI スレッド相当で実行する。
+    _on_sync_done / _on_sync_error はモック化して UI 呼び出しを抑制する。
+    """
     pid = screen._period_id
     with (
         mock.patch(
@@ -193,6 +198,14 @@ def _run_sync_worker(screen: PeriodDashboardScreen, sync_result: SyncResult) -> 
         mock.patch("src.ui.screens.period_dashboard.sync_period", return_value=sync_result),
     ):
         screen._sync_worker()
+
+    if screen.app.post_to_ui.called:
+        cb = screen.app.post_to_ui.call_args[0][0]
+        with (
+            mock.patch.object(screen, "_on_sync_done"),
+            mock.patch.object(screen, "_on_sync_error"),
+        ):
+            cb()
 
 
 class TestSyncWarningKind:
@@ -229,6 +242,51 @@ class TestSyncWarningKind:
 
         assert any(w.kind == "form_update" for w in screen.app.warnings)
         assert not any(w.kind == "sync" for w in screen.app.warnings)
+
+
+class TestSyncWorkerShutdown:
+    def test_warnings_unchanged_when_shutdown_mid_loop(self):
+        """shutdown 中にループに入ったとき、warnings が変わらないこと。"""
+        screen = _make_screen(status="collecting")
+        pid = screen._period_id
+        original = [AppWarning(period_id=pid, message="既存警告", kind="sync")]
+        screen.app.warnings = list(original)
+        screen.app.is_shutting_down.return_value = True
+
+        _run_sync_worker(screen, SyncResult(period_id=pid, added=0, warnings=["新しい警告"]))
+
+        assert screen.app.warnings == original
+
+    def test_warnings_unchanged_when_shutdown_before_apply(self):
+        """ワーカー完了後のコールバック実行時に shutdown 中なら warnings が変わらないこと。"""
+        screen = _make_screen(status="collecting")
+        pid = screen._period_id
+        original = [AppWarning(period_id=pid, message="既存警告", kind="sync")]
+        screen.app.warnings = list(original)
+
+        result = SyncResult(period_id=pid, added=1, warnings=[])
+        with (
+            mock.patch(
+                "src.ui.screens.period_dashboard.settings_repo.get",
+                return_value={"credentials_filename": "creds.json"},
+            ),
+            mock.patch("src.ui.screens.period_dashboard.auth.load_credentials", return_value=mock.Mock()),
+            mock.patch("src.ui.screens.period_dashboard.client.build_sheets", return_value=mock.Mock()),
+            mock.patch(
+                "src.ui.screens.period_dashboard.period_repo.get_by_status",
+                side_effect=lambda s: [period_repo.get_by_id(pid)] if s == "collecting" else [],
+            ),
+            mock.patch("src.ui.screens.period_dashboard.staff_repo.get_all", return_value=[]),
+            mock.patch("src.ui.screens.period_dashboard.sync_period", return_value=result),
+        ):
+            screen._sync_worker()
+
+        screen.app.is_shutting_down.return_value = True
+        if screen.app.post_to_ui.called:
+            cb = screen.app.post_to_ui.call_args[0][0]
+            cb()
+
+        assert screen.app.warnings == original
 
 
 class TestRefreshAfterDataChange:
