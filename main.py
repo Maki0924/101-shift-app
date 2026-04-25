@@ -123,7 +123,7 @@ def main() -> None:
         app.show_screen(StartScreen)
 
         # スタート画面表示後にバックグラウンドで自動同期
-        auto_sync_thread = threading.Thread(target=_run_auto_sync, args=(app,))
+        auto_sync_thread = threading.Thread(target=_run_auto_sync, args=(app,), daemon=True)
         auto_sync_thread.start()
 
         app.mainloop()

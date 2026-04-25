@@ -138,3 +138,26 @@ class TestFormUpdateWorkerShutdown:
             cb()
 
         assert screen.app.warnings == original
+
+    def test_exception_path_no_ui_update_when_shutdown(self):
+        """例外発生時のコールバックも shutdown 中なら status_bar を触らないこと。"""
+        screen = _make_screen()
+
+        with (
+            mock.patch(
+                "src.ui.screens.staff_screen.settings_repo.get",
+                return_value={"credentials_filename": "creds.json"},
+            ),
+            mock.patch(
+                "src.ui.screens.staff_screen.auth.load_credentials",
+                side_effect=RuntimeError("auth error"),
+            ),
+        ):
+            screen._form_update_worker()
+
+        screen.app.is_shutting_down.return_value = True
+        if screen.app.post_to_ui.called:
+            cb = screen.app.post_to_ui.call_args[0][0]
+            cb()
+
+        screen.app.status_bar.set_timed_sync_message.assert_not_called()
