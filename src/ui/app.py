@@ -107,11 +107,7 @@ class App(tk.Tk):
         return self._shutdown_event.is_set()
 
     def start_worker(self, target: Callable[[], None]) -> threading.Thread:
-        """ワーカースレッドを daemon=True で起動し App に登録する。
-
-        登録済みの完了スレッドは起動時に自動除去する。
-        終了時に join_workers() を呼ぶことで close_connection() との競合を防ぐ。
-        """
+        """daemon スレッドを起動して登録する。join_workers() で close_connection() 前に回収できる。"""
         thread = threading.Thread(target=target, daemon=True)
         with self._workers_lock:
             self._workers = {t for t in self._workers if t.is_alive()}
@@ -120,10 +116,7 @@ class App(tk.Tk):
         return thread
 
     def join_workers(self, timeout_each: float = 5.0) -> None:
-        """全登録ワーカースレッドの終了を待つ。
-
-        各スレッドに timeout_each 秒まで待ち、超過した場合は警告ログを残す。
-        """
+        """全登録ワーカースレッドを timeout_each 秒ずつ待つ。超過時は警告ログを残す。"""
         with self._workers_lock:
             threads = set(self._workers)
         for t in threads:

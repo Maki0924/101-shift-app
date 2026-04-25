@@ -334,7 +334,7 @@ def sync_period(
     for row in rows[1:]:
         if cancel_check and cancel_check():
             get_logger().info("sync_period cancelled mid-rows (period %d)", period["id"])
-            break
+            return result
         try:
             _process_row(row, cm, period, all_dates, staff_map, result)
         except Exception as e:
